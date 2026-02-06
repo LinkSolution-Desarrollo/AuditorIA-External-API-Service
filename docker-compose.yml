@@ -1,0 +1,24 @@
+version: "3.8"
+
+services:
+  external-api:
+    build: .
+    container_name: external_api_service
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    environment:
+      # Override localhost with host.docker.internal for container-to-host communication
+      # Users should ensure their .env uses these or they are set here if defaults are localhost
+      - DB_HOST=host.docker.internal
+      - MINIO_ENDPOINT=host.docker.internal:9000
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    networks:
+      - auditoria_net
+
+networks:
+  auditoria_net:
+    driver: bridge
