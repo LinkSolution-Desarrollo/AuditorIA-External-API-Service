@@ -183,3 +183,15 @@ def get_s3_object(bucket_name, object_name):
     except Exception as e:
         logger.error(f"S3 Get Object Error: {e}")
         return None
+
+
+def check_file_exists_in_s3(bucket_name, object_name):
+    """
+    Check if an object exists in an S3 bucket
+    """
+    s3_client = get_s3_client()
+    try:
+        s3_client.head_object(Bucket=bucket_name, Key=object_name)
+        return True
+    except Exception:
+        return False
