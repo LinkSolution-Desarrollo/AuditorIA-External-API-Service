@@ -1,0 +1,19 @@
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+boto3
+python-dotenv
+python-multipart
+msgpack
+pydantic-settings
+slowapi
+python-magic-bin; platform_system == 'Windows'
+python-magic; platform_system != 'Windows'
+# AI Chat
+langchain-openai
+langchain-core
+openai
+# Testing
+pytest
+httpx
