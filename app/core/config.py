@@ -8,9 +8,6 @@ class Settings(BaseSettings):
     APP_NAME: str = "AuditorIA External API Service"
     API_V1_STR: str = "/api/v1"
 
-    # Database
-    DB_URL: str = "postgresql://root:password@localhost:5432/auditoria_db"
-
     # S3 / MinIO
     S3_ACCESS_KEY: Optional[str] = None
     S3_SECRET_KEY: Optional[str] = None

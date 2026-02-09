@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Create engine and session
-db_url = os.getenv("DB_URL", "postgresql://root:password@localhost:5432/auditoria_db")  
+db_url = os.getenv("DB_URL")
 
 engine = create_engine(
     db_url,
@@ -25,6 +25,7 @@ def get_db():
         yield db
     finally:
         db.close()
+
 
 def handle_database_errors(func):
     @wraps(func)
