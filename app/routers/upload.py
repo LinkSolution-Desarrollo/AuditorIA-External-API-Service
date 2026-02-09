@@ -5,7 +5,6 @@ from slowapi.util import get_remote_address
 from app.core.database import get_db
 from app.services.s3_service import upload_fileobj_to_s3, check_file_exists_in_s3
 from app.models import Task, GlobalApiKey, Campaign, CallLog
-from app.middleware.auth import get_api_key
 from app.core.validation import validate_file
 from app.core.config import get_settings
 import os
@@ -18,7 +17,6 @@ from app.schemas.transcription import TranscriptionConfig
 router = APIRouter(
     prefix="/upload",
     tags=["Upload"],
-    dependencies=[Depends(get_api_key)]
 )
 
 settings = get_settings()
@@ -36,7 +34,6 @@ async def upload_file(
     operator_id: int = Form(...),
     config: TranscriptionConfig = Depends(TranscriptionConfig.as_form),
     db: Session = Depends(get_db),
-    api_key: GlobalApiKey = Depends(get_api_key)
 ):
     # Check if campaign exists
     campaign = db.query(Campaign).filter(
@@ -89,7 +86,7 @@ async def upload_file(
         # Prepare Task Params (Internal logic remains here)
         task_params = {
             "source": "external_api",
-            "api_key_id": api_key.id
+            "api_key_id": None
         }
 
         # Parse suppress_tokens if provided
