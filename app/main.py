@@ -5,7 +5,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from app.routers import upload_router, tasks_router, chat_router, campaigns_router
+from app.routers import upload_router, tasks_router, chat_router, campaigns_router, webhooks_router
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -39,6 +39,7 @@ app.include_router(upload_router)
 app.include_router(tasks_router)
 app.include_router(chat_router)
 app.include_router(campaigns_router)
+app.include_router(webhooks_router)
 
 @app.get("/")
 @limiter.limit("5/minute")

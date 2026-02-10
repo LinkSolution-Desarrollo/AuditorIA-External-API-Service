@@ -7,6 +7,7 @@ Standalone service for external users to upload audio files to the AuditorIA pla
 - **Secure Uploads**: Authenticated via Global API Keys managed in the main application.
 - **S3 Integration**: Uploads directly to MinIO/S3 storage.
 - **Task Creation**: Automatically creates transcription tasks in the main `auditoria_db`.
+- **Anura Integration**: 🆕 Receive webhooks from Anura cloud PBX and auto-transcribe calls
 - **Security**:
   - Rate Limiting (SlowAPI)
   - File Type & Magic Number Validation
@@ -50,4 +51,30 @@ Standalone service for external users to upload audio files to the AuditorIA pla
 curl -X POST "http://localhost:8001/upload/" \
   -H "X-API-Key: <YOUR_KEY>" \
   -F "file=@audio.wav"
+```
+
+### Anura Webhook (`POST /webhook/anura/`)
+
+🆕 **New**: Receive call events from Anura PBX and automatically transcribe recordings.
+
+See [ANURA_INTEGRATION.md](ANURA_INTEGRATION.md) for full documentation.
+
+**Example**:
+
+```bash
+curl -X POST "http://localhost:8001/webhook/anura/" \
+  -H "X-API-Key: <YOUR_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "hooktrigger": "END",
+    "cdrid": "1234567890",
+    "dialtime": "2026-02-10 10:30:00",
+    "calling": "+5491167950079",
+    "called": "+5491126888209",
+    "direction": "inbound",
+    "duration": 120,
+    "wasrecorded": true,
+    "audio_file_mp3": "https://anura.com/recordings/12345.mp3",
+    "accounttags": "campaign_1"
+  }'
 ```
