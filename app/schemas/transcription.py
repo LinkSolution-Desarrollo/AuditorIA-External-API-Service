@@ -8,10 +8,10 @@ class TranscriptionConfig(BaseModel):
     Configuration parameters for the transcription process.
     Matches the parameters of the /transcribe endpoint in AuditorIA-App.
     """
-    language: Optional[str] = None
+    language: Optional[str] = "es"
     task: Optional[str] = "transcribe"
-    model: Optional[str] = "base"
-    device: Optional[str] = "cpu"
+    model: Optional[str] = "nova-3"
+    device: Optional[str] = "deepgram"
     device_index: Optional[int] = 0
     beam_size: Optional[int] = 5
     patience: Optional[float] = 1.0
@@ -37,10 +37,10 @@ class TranscriptionConfig(BaseModel):
     @classmethod
     def as_form(
         cls,
-        language: Optional[str] = Form(None),
+        language: Optional[str] = Form("es"),
         task: Optional[str] = Form("transcribe"),
-        model: Optional[str] = Form("base"),
-        device: Optional[str] = Form("cpu"),
+        model: Optional[str] = Form("nova-3"),
+        device: Optional[str] = Form("deepgram"),
         device_index: Optional[int] = Form(0),
         beam_size: Optional[int] = Form(5),
         patience: Optional[float] = Form(1.0),
