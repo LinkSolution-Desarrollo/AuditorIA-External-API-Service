@@ -14,6 +14,7 @@ import shutil
 import uuid
 from datetime import datetime
 from app.schemas.transcription import TranscriptionConfig
+from mutagen import File as MutagenFile
 
 router = APIRouter(
     prefix="/upload",
@@ -80,18 +81,10 @@ async def upload_file(
         upload_success = upload_fileobj_to_s3(
             open(tmp_path, "rb"), bucket_name, object_name, content_type=file.content_type)
 
-        # Clean up temp file
-        os.unlink(tmp_path)
-
         if not upload_success:
+            os.unlink(tmp_path)
             raise HTTPException(
                 status_code=500, detail="Failed to upload file to storage")
-
-        # Prepare Task Params (Internal logic remains here)
-        task_params = {
-            "source": "external_api",
-            "api_key_id": None
-        }
 
         # Parse suppress_tokens if provided
         parsed_suppress_tokens = None
@@ -102,10 +95,52 @@ async def upload_file(
             except ValueError:
                 pass
 
-        # Add all transcription parameters to task_params
-        task_params["transcription_config"] = config.dict(
-            exclude={"suppress_tokens"})
-        task_params["transcription_config"]["suppress_tokens"] = parsed_suppress_tokens
+        # Prepare Task Params (match downstream transcribe payload)
+        task_params = {
+            "language": config.language or "es",
+            "task": config.task or "transcribe",
+            "model": config.model or "nova-3",
+            "device": config.device or "deepgram",
+            "device_index": config.device_index or 0,
+            "threads": config.threads,
+            "batch_size": config.batch_size,
+            "compute_type": config.compute_type,
+            "align_model": config.align_model,
+            "interpolate_method": config.interpolate_method,
+            "return_char_alignments": False,
+            "asr_options": {
+                "beam_size": config.beam_size,
+                "patience": config.patience,
+                "length_penalty": config.length_penalty,
+                "temperatures": config.temperatures,
+                "compression_ratio_threshold": config.compression_ratio_threshold,
+                "log_prob_threshold": config.log_prob_threshold,
+                "no_speech_threshold": config.no_speech_threshold,
+                "initial_prompt": config.initial_prompt,
+                "suppress_tokens": parsed_suppress_tokens,
+                "suppress_numerals": config.suppress_numerals,
+            },
+            "vad_options": {
+                "vad_onset": config.vad_onset,
+                "vad_offset": config.vad_offset,
+            },
+            "min_speakers": None,
+            "max_speakers": None,
+            "s3_path": object_name,
+            "username": username,
+        }
+
+        # Best-effort audio duration (seconds)
+        audio_duration = None
+        try:
+            audio_info = MutagenFile(tmp_path)
+            if audio_info is not None and getattr(audio_info, "info", None) is not None:
+                audio_duration = getattr(audio_info.info, "length", None)
+        except Exception:
+            audio_duration = None
+
+        # Clean up temp file
+        os.unlink(tmp_path)
 
         # Create Task
         new_task = Task(
@@ -113,7 +148,7 @@ async def upload_file(
             file_name=file.filename,
             url=object_name,
             status="pending",
-            task_type="transcription",
+            task_type="full_process",
             task_params=task_params,
             language=config.language or "es",
             audio_duration=audio_duration
@@ -125,6 +160,7 @@ async def upload_file(
             file_name=file.filename,
             date=datetime.utcnow(),
             campaign_id=campaign_id,
+            call_id=file_uuid,
             operator_id=operator_id,
             upload_by=username,
             url=object_name,
