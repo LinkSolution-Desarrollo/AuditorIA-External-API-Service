@@ -191,6 +191,107 @@ Health check endpoint (no auth required).
 
 Test endpoint to validate payload format (no auth required).
 
+### GET /anura/campaigns
+
+List all available campaigns for mapping.
+
+**Response:**
+```json
+{
+  "total": 5,
+  "campaigns": [
+    {
+      "campaign_id": 1,
+      "name": "Sales Campaign",
+      "anura_tag_format": "campaign_1"
+    }
+  ]
+}
+```
+
+### GET /anura/mapping-guide
+
+Get complete guide for mapping Anura data to AuditorIA.
+
+**Response:**
+```json
+{
+  "campaign_mapping": {...},
+  "operator_mapping": {...},
+  "example_webhook": {...}
+}
+```
+
+### POST /anura/validate-mapping
+
+Validate if Anura tags/extensions will map correctly.
+
+**Request:**
+```json
+{
+  "accounttags": "campaign_1",
+  "queueagentextension": "300"
+}
+```
+
+**Response:**
+```json
+{
+  "valid": true,
+  "mapping": {
+    "campaign": {
+      "extracted_id": 1,
+      "exists": true,
+      "campaign_name": "Sales Campaign"
+    },
+    "operator": {
+      "extracted_id": 300,
+      "valid": true
+    }
+  }
+}
+```
+
+### GET /anura/stats
+
+Get integration statistics.
+
+**Response:**
+```json
+{
+  "total_webhooks_received": 150,
+  "total_recordings_downloaded": 142,
+  "total_tasks_created": 142,
+  "recent_activity_24h": {
+    "webhooks": 45,
+    "recordings": 43
+  }
+}
+```
+
+### POST /test/anura/generate-webhook
+
+Generate realistic test webhook payload.
+
+**Request:**
+```json
+{
+  "trigger": "END",
+  "campaign_id": 1,
+  "operator_id": 300,
+  "has_recording": true,
+  "duration": 120
+}
+```
+
+### GET /test/anura/scenarios
+
+Get predefined test scenarios.
+
+### GET /test/anura/cheatsheet
+
+Quick reference guide for Anura integration.
+
 ## Workflow
 
 ```
