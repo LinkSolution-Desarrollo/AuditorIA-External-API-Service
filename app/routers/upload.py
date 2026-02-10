@@ -144,6 +144,7 @@ async def upload_file(
             file_name=file.filename,
             date=datetime.utcnow(),
             campaign_id=campaign_id,
+            call_id=file_uuid,
             operator_id=operator_id,
             upload_by=username,
             url=object_name,
