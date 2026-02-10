@@ -83,12 +83,6 @@ async def upload_file(
             raise HTTPException(
                 status_code=500, detail="Failed to upload file to storage")
 
-        # Prepare Task Params (Internal logic remains here)
-        task_params = {
-            "source": "external_api",
-            "api_key_id": None
-        }
-
         # Parse suppress_tokens if provided
         parsed_suppress_tokens = None
         if config.suppress_tokens:
@@ -98,10 +92,40 @@ async def upload_file(
             except ValueError:
                 pass
 
-        # Add all transcription parameters to task_params
-        task_params["transcription_config"] = config.dict(
-            exclude={"suppress_tokens"})
-        task_params["transcription_config"]["suppress_tokens"] = parsed_suppress_tokens
+        # Prepare Task Params (match downstream transcribe payload)
+        task_params = {
+            "language": config.language or "es",
+            "task": config.task or "transcribe",
+            "model": config.model or "base",
+            "device": config.device or "cpu",
+            "device_index": config.device_index or 0,
+            "threads": config.threads,
+            "batch_size": config.batch_size,
+            "compute_type": config.compute_type,
+            "align_model": config.align_model,
+            "interpolate_method": config.interpolate_method,
+            "return_char_alignments": False,
+            "asr_options": {
+                "beam_size": config.beam_size,
+                "patience": config.patience,
+                "length_penalty": config.length_penalty,
+                "temperatures": config.temperatures,
+                "compression_ratio_threshold": config.compression_ratio_threshold,
+                "log_prob_threshold": config.log_prob_threshold,
+                "no_speech_threshold": config.no_speech_threshold,
+                "initial_prompt": config.initial_prompt,
+                "suppress_tokens": parsed_suppress_tokens,
+                "suppress_numerals": config.suppress_numerals,
+            },
+            "vad_options": {
+                "vad_onset": config.vad_onset,
+                "vad_offset": config.vad_offset,
+            },
+            "min_speakers": None,
+            "max_speakers": None,
+            "s3_path": object_name,
+            "username": username,
+        }
 
         # Create Task
         new_task = Task(
