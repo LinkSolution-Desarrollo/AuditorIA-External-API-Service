@@ -13,6 +13,7 @@ import shutil
 import uuid
 from datetime import datetime
 from app.schemas.transcription import TranscriptionConfig
+from mutagen import File as MutagenFile
 
 router = APIRouter(
     prefix="/upload",
@@ -76,10 +77,8 @@ async def upload_file(
         upload_success = upload_fileobj_to_s3(
             open(tmp_path, "rb"), bucket_name, object_name, content_type=file.content_type)
 
-        # Clean up temp file
-        os.unlink(tmp_path)
-
         if not upload_success:
+            os.unlink(tmp_path)
             raise HTTPException(
                 status_code=500, detail="Failed to upload file to storage")
 
@@ -127,6 +126,18 @@ async def upload_file(
             "username": username,
         }
 
+        # Best-effort audio duration (seconds)
+        audio_duration = None
+        try:
+            audio_info = MutagenFile(tmp_path)
+            if audio_info is not None and getattr(audio_info, "info", None) is not None:
+                audio_duration = getattr(audio_info.info, "length", None)
+        except Exception:
+            audio_duration = None
+
+        # Clean up temp file
+        os.unlink(tmp_path)
+
         # Create Task
         new_task = Task(
             uuid=file_uuid,
@@ -135,7 +146,8 @@ async def upload_file(
             status="pending",
             task_type="full_process",
             task_params=task_params,
-            language=config.language or "es"
+            language=config.language or "es",
+            audio_duration=audio_duration,
         )
         db.add(new_task)
 
