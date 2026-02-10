@@ -3,10 +3,9 @@ Router for Anura webhook integration.
 """
 from fastapi import APIRouter, Request, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 from app.core.database import get_db
+from app.core.limiter import limiter
 from app.middleware.auth import get_api_key
 from app.models import GlobalApiKey
 from app.schemas.anura import AnuraWebhookPayload, AnuraWebhookResponse
@@ -19,7 +18,6 @@ router = APIRouter(
 )
 
 settings = get_settings()
-limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post("/anura/", response_model=AnuraWebhookResponse)

@@ -3,11 +3,9 @@ Additional endpoints for Anura integration helpers.
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-from typing import List, Dict, Any
 
 from app.core.database import get_db
+from app.core.limiter import limiter
 from app.middleware.auth import get_api_key
 from app.models import Campaign, GlobalApiKey
 from app.schemas.anura import AnuraWebhookResponse
@@ -16,8 +14,6 @@ router = APIRouter(
     prefix="/anura",
     tags=["Anura Integration"],
 )
-
-limiter = Limiter(key_func=get_remote_address)
 
 
 @router.get("/campaigns")
@@ -75,7 +71,7 @@ async def get_mapping_guide(
             "examples": [
                 {
                     "campaign_id": c.campaign_id,
-                    "campaign_name": c.name,
+                    "campaign_name": c.campaign_name,
                     "anura_account_tag": f"campaign_{c.campaign_id}",
                     "webhook_value": f"campaign_{c.campaign_id}"
                 }
@@ -215,7 +211,7 @@ async def validate_mapping(
         ).first()
         if campaign:
             campaign_exists = True
-            campaign_name = campaign.name
+            campaign_name = campaign.campaign_name
     
     # Extract operator_id
     operator_id = extract_operator_id_from_agent(queueagentextension, queueagentname)

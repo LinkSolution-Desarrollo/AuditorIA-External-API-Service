@@ -18,8 +18,6 @@ from app.services.s3_service import upload_fileobj_to_s3
 from app.core.config import get_settings
 from mutagen import File as MutagenFile
 
-settings = get_settings()
-
 
 class AnuraIntegrationError(Exception):
     """Base exception for Anura integration errors."""
@@ -117,7 +115,7 @@ def download_recording(recording_url: str) -> Tuple[bytes, str]:
         return response.content, content_type
         
     except requests.RequestException as e:
-        raise AnuraDownloadError(f"Failed to download recording: {str(e)}")
+        raise AnuraDownloadError(f"Failed to download recording: {str(e)}") from e
 
 
 def determine_file_extension(content_type: str) -> str:
@@ -226,12 +224,14 @@ def process_anura_webhook(
         ).first()
         
         if not call_log:
+            # Generate provisional filename (file_name is PK, cannot be None)
+            provisional_filename = f"pending_{payload.cdrid}_{uuid.uuid4().hex[:8]}.tmp"
             call_log = CallLog(
                 call_id=payload.cdrid,
-                file_name=None,  # Will be set if recording downloaded
+                file_name=provisional_filename,  # Will be updated when recording downloads
                 date=call_start,
-                campaign_id=campaign_id,
-                operator_id=operator_id or 1,  # Default to 1 if not set
+                campaign_id=campaign_id or 1,  # Must have campaign_id (NOT NULL)
+                operator_id=operator_id or 1,  # Must have operator_id (NOT NULL)
                 direction=payload.direction,
                 call_start_date=call_start,
                 call_end_date=call_end,
@@ -248,7 +248,6 @@ def process_anura_webhook(
             # Update existing log
             call_log.call_end_date = call_end
             call_log.sectot = payload.duration
-            call_log.status = payload.status
             if payload.audio_file_mp3:
                 call_log.url = payload.audio_file_mp3
         
@@ -279,6 +278,7 @@ def process_anura_webhook(
                 
                 try:
                     # Upload to S3
+                    settings = get_settings()
                     upload_success = upload_fileobj_to_s3(
                         open(tmp_path, "rb"),
                         settings.S3_BUCKET,
@@ -346,4 +346,4 @@ def process_anura_webhook(
         
     except Exception as e:
         db.rollback()
-        raise AnuraIntegrationError(f"Failed to process webhook: {str(e)}")
+        raise AnuraIntegrationError(f"Failed to process webhook: {str(e)}") from e
