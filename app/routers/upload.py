@@ -96,8 +96,8 @@ async def upload_file(
         task_params = {
             "language": config.language or "es",
             "task": config.task or "transcribe",
-            "model": config.model or "base",
-            "device": config.device or "cpu",
+            "model": config.model or "nova-3",
+            "device": config.device or "deepgram",
             "device_index": config.device_index or 0,
             "threads": config.threads,
             "batch_size": config.batch_size,
@@ -133,7 +133,7 @@ async def upload_file(
             file_name=file.filename,
             url=object_name,
             status="pending",
-            task_type="transcription",
+            task_type="full_process",
             task_params=task_params,
             language=config.language or "es"
         )
