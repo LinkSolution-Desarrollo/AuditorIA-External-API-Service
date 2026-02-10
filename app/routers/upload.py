@@ -6,6 +6,7 @@ from app.core.database import get_db
 from app.services.s3_service import upload_fileobj_to_s3, check_file_exists_in_s3
 from app.models import Task, GlobalApiKey, Campaign, CallLog
 from app.core.validation import validate_file
+from app.core.audio import get_audio_duration
 from app.core.config import get_settings
 import os
 import tempfile
@@ -63,6 +64,9 @@ async def upload_file(
             raise HTTPException(
                 status_code=413, detail=f"File too large. Max size is {settings.MAX_UPLOAD_SIZE_MB}MB")
 
+        # Get audio duration
+        audio_duration = get_audio_duration(tmp_path)
+
         object_name = f"{username}/{file.filename}"
 
         # Check if file already exists
@@ -111,7 +115,8 @@ async def upload_file(
             status="pending",
             task_type="transcription",
             task_params=task_params,
-            language=config.language or "es"
+            language=config.language or "es",
+            audio_duration=audio_duration
         )
         db.add(new_task)
 
@@ -123,7 +128,8 @@ async def upload_file(
             operator_id=operator_id,
             upload_by=username,
             url=object_name,
-            log=f"Uploaded via External API (Task UUID: {file_uuid})"
+            log=f"Uploaded via External API (Task UUID: {file_uuid})",
+            sectot=audio_duration   
         )
         db.add(new_call_log)
 
