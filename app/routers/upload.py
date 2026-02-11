@@ -25,7 +25,7 @@ settings = get_settings()
 limiter = Limiter(key_func=get_remote_address)
 
 
-@router.post("/")
+@router.post("")
 @limiter.limit("10/minute")
 async def upload_file(
     request: Request,
