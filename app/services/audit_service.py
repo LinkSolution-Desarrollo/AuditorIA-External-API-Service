@@ -91,7 +91,7 @@ class AuditService:
                 db=db,
                 task_uuid=task_uuid,
                 campaign_id=campaign_id,
-                user_id=task_data.get('user_id', 'unknown'),
+                user_id='external_api',  # Always use external_api for API-generated audits
                 score=score,
                 is_audit_failure=is_failure,
                 audit=audit_results['answers'],
