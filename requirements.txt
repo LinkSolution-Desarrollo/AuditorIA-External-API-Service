@@ -9,6 +9,7 @@ msgpack
 pydantic-settings
 slowapi
 mutagen
+requests
 python-magic-bin; platform_system == 'Windows'
 python-magic; platform_system != 'Windows'
 # AI Chat
