@@ -1,138 +1,153 @@
 """
-Service for handling agent identification.
+Service for agent identification (simplified for External API).
 """
 import os
 import json
 import logging
-from typing import Dict, Optional
+from typing import Dict
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import text
 from openai import OpenAI
 
-from ..models.agent_identification import AgentIdentification
-from ..models.task import Task
+from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
+client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
-# Initialize OpenAI client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 class AgentIdentificationService:
+    """Service for agent identification via External API."""
+
     @staticmethod
-    def get_identification(db: Session, task_uuid: str) -> Optional[Dict[str, str]]:
-        """
-        Get existing agent identification for a task UUID.
-        """
-        stmt = select(AgentIdentification).where(AgentIdentification.original_uuid == task_uuid)
-        result = db.execute(stmt).scalar_one_or_none()
-        
-        if result and result.agent_identification:
-            # If stored as string, parse it. If JSON type in DB, it comes as dict.
-            if isinstance(result.agent_identification, str):
-                try:
-                    return json.loads(result.agent_identification)
-                except json.JSONDecodeError:
-                    return None
-            return result.agent_identification
+    def get_identification(db: Session, task_uuid: str) -> Dict[str, str]:
+        """Get or identify agents."""
+        # 1. Check if exists
+        existing = AgentIdentificationService._get_existing_identification(db, task_uuid)
+        if existing:
+            return existing
+
+        # 2. Get task
+        task = AgentIdentificationService._get_task(db, task_uuid)
+        if not task:
+            raise ValueError(f"Task {task_uuid} not found")
+
+        if not task.get('result'):
+            raise ValueError("Task has no transcription")
+
+        # 3. Identify agents
+        identification = AgentIdentificationService._identify_with_openai(task['result'])
+
+        # 4. Save
+        AgentIdentificationService._save_identification(db, task_uuid, identification)
+
+        return identification
+
+    @staticmethod
+    def _get_existing_identification(db: Session, task_uuid: str) -> Dict[str, str] | None:
+        """Get existing identification."""
+        query = text("""
+            SELECT agent_identification
+            FROM agent_identification
+            WHERE original_uuid = :uuid
+            LIMIT 1
+        """)
+        result = db.execute(query, {"uuid": task_uuid}).scalar()
+        if result:
+            if isinstance(result, str):
+                return json.loads(result)
+            return result
         return None
 
     @staticmethod
-    def identify_agent(db: Session, task_uuid: str) -> Dict[str, str]:
-        """
-        Identify agent and other speakers in a task using OpenAI.
-        """
-        # 1. Fetch task transcript
-        task = db.query(Task).filter(Task.uuid == task_uuid).first()
-        if not task:
-            raise ValueError(f"Task with UUID {task_uuid} not found")
-        
-        if not task.result:
-            raise ValueError("Task has no result/transcript to analyze")
-            
-        # Extract segments for the prompt
-        # Assuming task.result has 'segments' list
-        result_data = task.result
-        if isinstance(result_data, str):
-            result_data = json.loads(result_data)
-            
-        segments = result_data.get("segments", [])
-        if not segments:
-             raise ValueError("No segments found in task result")
-        
-        # Extract language from transcription result
-        language = result_data.get("language", "es")
-
-        # Format segments for LLM
-        formatted_segments = [
-            {
-                "text": s.get("text", "").strip(),
-                "start": s.get("start"),
-                "end": s.get("end"),
-                "speaker": s.get("speaker")
+    def _get_task(db: Session, task_uuid: str) -> Dict | None:
+        """Get task data."""
+        query = text("""
+            SELECT uuid, result
+            FROM tasks
+            WHERE uuid = :uuid
+            LIMIT 1
+        """)
+        result = db.execute(query, {"uuid": task_uuid}).fetchone()
+        if result:
+            result_data = result[1]
+            if isinstance(result_data, str):
+                result_data = json.loads(result_data)
+            return {
+                "uuid": result[0],
+                "result": result_data
             }
-            for s in segments
-        ]
-        segments_json = json.dumps(formatted_segments)
-        
-        # Language-specific labels
-        language_labels = {
-            "es": {"agent": "Agente", "client": "Cliente", "ivr": "IVR", "voicemail": "Buzón de Voz"},
-            "en": {"agent": "Agent", "client": "Customer", "ivr": "IVR", "voicemail": "Voicemail"},
-            "pt": {"agent": "Agente", "client": "Cliente", "ivr": "URA", "voicemail": "Caixa Postal"},
-            "fr": {"agent": "Agent", "client": "Client", "ivr": "SVI", "voicemail": "Messagerie"},
-            "de": {"agent": "Agent", "client": "Kunde", "ivr": "IVR", "voicemail": "Voicemail"},
-        }
-        labels = language_labels.get(language, language_labels["es"])
-        
-        # 2. Call OpenAI
-        prompt = f"""
-        You are an expert speaker identification algorithm.
-        You will identify who is talking in the provided transcription segments.
-        The transcription is in language code: {language}.
-        Only identify a speaker once.
-        The format of the speaker must be: "SPEAKER_(number)" with the number that's present in the segments.
-        This format and the numbers MUST be kept when generating the JSON output.
-        Maximum description length is 5 words. Minimum is 1.
-        The call center agent should always be called "{labels['agent']}".
-        The client should always be called "{labels['client']}".
-        There can also be other speakers present in the transcription (e.g., "{labels['ivr']}", "{labels['voicemail']}").
-        
-        Return ONLY a JSON object where keys are SPEAKER_XX and values are the identified role.
-        Example:
-        {{
-            "SPEAKER_00": "{labels['agent']}",
-            "SPEAKER_01": "{labels['client']}"
-        }}
-        """
-        
+        return None
+
+    @staticmethod
+    def _identify_with_openai(result_data: Dict) -> Dict[str, str]:
+        """Identify agents using OpenAI."""
         try:
+            segments = result_data.get("segments", [])
+            if not segments:
+                raise ValueError("No segments found")
+
+            language = result_data.get("language", "es")
+
+            formatted_segments = [
+                {
+                    "text": s.get("text", "").strip(),
+                    "start": s.get("start"),
+                    "end": s.get("end"),
+                    "speaker": s.get("speaker")
+                }
+                for s in segments
+            ]
+            segments_json = json.dumps(formatted_segments, ensure_ascii=False)
+
+            language_labels = {
+                "es": {"agent": "Agente", "client": "Cliente"},
+                "en": {"agent": "Agent", "client": "Customer"},
+                "pt": {"agent": "Agente", "client": "Cliente"}
+            }
+            labels = language_labels.get(language, language_labels["es"])
+
+            prompt = f"""
+Identify speakers in the transcription (language: {language}).
+Format: SPEAKER_(number) from segments.
+Agent = "{labels['agent']}", Customer = "{labels['client']}".
+Max 5 words per role.
+
+Return ONLY JSON:
+{{
+  "SPEAKER_00": "{labels['agent']}",
+  "SPEAKER_01": "{labels['client']}"
+}}
+
+Segments:
+{segments_json}
+"""
+
             response = client.chat.completions.create(
-                model="gpt-4.1-nano",
+                model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": prompt},
-                    {"role": "user", "content": f"segments: {segments_json}"}
+                    {"role": "system", "content": "You are a speaker identification JSON generator."},
+                    {"role": "user", "content": prompt}
                 ],
                 response_format={"type": "json_object"},
                 temperature=0.3
             )
-            
-            content = response.choices[0].message.content
-            identification_data = json.loads(content)
-            
-            # 3. Save to DB
-            # Check if exists to update or create
-            existing_ident = db.query(AgentIdentification).filter(AgentIdentification.original_uuid == task_uuid).first()
-            
-            if existing_ident:
-                existing_ident.agent_identification = identification_data
-            else:
-                new_ident = AgentIdentification(original_uuid=task_uuid, agent_identification=identification_data)
-                db.add(new_ident)
-            
-            db.commit()
-            
-            return identification_data
-            
+
+            identification = json.loads(response.choices[0].message.content)
+            return identification
+
         except Exception as e:
-            logger.error(f"Error identifying agent: {e}")
-            raise e
+            logger.error(f"Error identifying agents: {e}", exc_info=True)
+            raise ValueError(f"Error: {str(e)}")
+
+    @staticmethod
+    def _save_identification(db: Session, task_uuid: str, identification: Dict[str, str]):
+        """Save identification to database."""
+        query = text("""
+            INSERT INTO agent_identification (original_uuid, agent_identification, created_at)
+            VALUES (:uuid, :identification::jsonb, NOW())
+            ON CONFLICT (original_uuid) DO UPDATE
+            SET agent_identification = :identification::jsonb, updated_at = NOW()
+        """)
+        db.execute(query, {"uuid": task_uuid, "identification": json.dumps(identification)})
+        db.commit()

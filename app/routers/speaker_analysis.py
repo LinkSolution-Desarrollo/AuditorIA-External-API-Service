@@ -16,6 +16,12 @@ def get_analysis(req: Request, task_uuid: str, generate_new: bool = Query(False)
     from app.services.speaker_analysis_service import SpeakerAnalysisService
     try:
         analysis = SpeakerAnalysisService.get_analysis(db, task_uuid)
-        return {"success": True, "task_uuid": task_uuid, "analysis": analysis or {}}
+        return {
+            "success": True,
+            "task_uuid": task_uuid,
+            "analysis": analysis if isinstance(analysis, dict) else {}
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

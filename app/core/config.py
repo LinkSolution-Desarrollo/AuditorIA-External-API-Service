@@ -9,6 +9,12 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     DEBUG: bool = False
 
+    # Database
+    DB_URL: Optional[str] = None
+
+    # OpenAI
+    OPENAI_API_KEY: Optional[str] = None
+
     # S3 / MinIO
     S3_ACCESS_KEY: Optional[str] = None
     S3_SECRET_KEY: Optional[str] = None

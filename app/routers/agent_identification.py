@@ -16,6 +16,12 @@ def get_identification(req: Request, task_uuid: str, db: Session = Depends(get_d
     from app.services.agent_identification_service import AgentIdentificationService
     try:
         ident = AgentIdentificationService.get_identification(db, task_uuid)
-        return {"success": True, "task_uuid": task_uuid, "identification": ident or {}}
+        return {
+            "success": True,
+            "task_uuid": task_uuid,
+            "identification": ident if isinstance(ident, dict) else {}
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
