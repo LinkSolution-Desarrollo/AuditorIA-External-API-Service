@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     # App Config
     APP_NAME: str = "AuditorIA External API Service"
     API_V1_STR: str = "/api/v1"
+    DEBUG: bool = False
 
     # S3 / MinIO
     S3_ACCESS_KEY: Optional[str] = None

@@ -1,17 +1,17 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from app.routers import upload_router, tasks_router, chat_router, campaigns_router
+from app.routers import (
+    upload_router, tasks_router, chat_router, campaigns_router,
+    webhooks_router, anura_helpers_router, test_utils_router
+)
 from app.core.config import get_settings
+from app.core.limiter import limiter
 
 settings = get_settings()
-
-# Rate Limiter setup
-limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -39,6 +39,12 @@ app.include_router(upload_router)
 app.include_router(tasks_router)
 app.include_router(chat_router)
 app.include_router(campaigns_router)
+app.include_router(webhooks_router)
+app.include_router(anura_helpers_router)
+
+# Only include test endpoints in DEBUG mode
+if settings.DEBUG:
+    app.include_router(test_utils_router)
 
 @app.get("/")
 @limiter.limit("5/minute")
