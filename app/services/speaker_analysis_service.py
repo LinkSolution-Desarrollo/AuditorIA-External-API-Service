@@ -105,7 +105,17 @@ Identify roles (Agent, Customer) and refer to them as such.
   "SPEAKER_01": "Description..."
 }}"""
 
-            transcription_text = json.dumps(segments, ensure_ascii=False)
+            # Truncate segments if too many
+            if len(segments) > 100:
+                sampled_segments = segments[:40] + segments[len(segments)//2 - 10:len(segments)//2 + 10] + segments[-40:]
+            else:
+                sampled_segments = segments
+
+            transcription_text = json.dumps(sampled_segments, ensure_ascii=False)
+
+            # Final safety check
+            if len(transcription_text) > 50000:
+                transcription_text = transcription_text[:50000] + '...]'
 
             model = ChatOpenAI(
                 model="gpt-4o-mini",

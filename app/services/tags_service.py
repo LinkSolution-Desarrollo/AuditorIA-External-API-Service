@@ -82,11 +82,34 @@ class TagsService:
         return None
 
     @staticmethod
+    def _truncate_for_context(result_data: Dict, max_chars: int = 50000) -> str:
+        """Truncate transcription to fit within OpenAI context limits."""
+        segments = result_data.get("segments", [])
+
+        # If we have segments, sample from beginning, middle, and end
+        if segments and len(segments) > 100:
+            # Take first 40, middle 20, last 40 segments
+            sampled = segments[:40] + segments[len(segments)//2 - 10:len(segments)//2 + 10] + segments[-40:]
+            result_data_truncated = {**result_data, "segments": sampled}
+        else:
+            result_data_truncated = result_data
+
+        transcript_text = json.dumps(result_data_truncated, ensure_ascii=False)
+
+        # If still too long, truncate the text itself
+        if len(transcript_text) > max_chars:
+            transcript_text = transcript_text[:max_chars] + '..."}'
+
+        return transcript_text
+
+    @staticmethod
     def _generate_tags_with_openai(result_data: Dict) -> Dict[str, List[str]]:
         """Generate tags using OpenAI."""
         try:
             language = result_data.get("language", "es")
-            transcript_text = json.dumps(result_data, ensure_ascii=False)
+
+            # Truncate to avoid context length errors
+            transcript_text = TagsService._truncate_for_context(result_data)
 
             language_names = {
                 "es": "Spanish", "en": "English", "pt": "Portuguese",

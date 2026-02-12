@@ -5,6 +5,7 @@ from slowapi.util import get_remote_address
 from app.core.database import get_db
 from app.services.s3_service import upload_fileobj_to_s3, check_file_exists_in_s3
 from app.models import Task, GlobalApiKey, Campaign, CallLog
+from app.middleware.auth import get_api_key, ApiKeyData
 from app.core.validation import validate_file
 from app.core.config import get_settings
 import os
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(
     prefix="/upload",
     tags=["Upload"],
+    dependencies=[Depends(get_api_key)]
 )
 
 settings = get_settings()
@@ -38,6 +40,7 @@ async def upload_file(
     operator_id: int = Form(...),
     config: TranscriptionConfig = Depends(TranscriptionConfig.as_form),
     db: Session = Depends(get_db),
+    api_key: ApiKeyData = Depends(get_api_key),
 ):
     # Check if campaign exists
     campaign = db.query(Campaign).filter(
@@ -127,6 +130,7 @@ async def upload_file(
             "max_speakers": None,
             "s3_path": object_name,
             "username": username,
+            "api_key_id": api_key.id,  # Store API key ID for filtering
         }
 
         # Best-effort audio duration (seconds)

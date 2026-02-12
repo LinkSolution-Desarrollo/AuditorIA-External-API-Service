@@ -89,6 +89,12 @@ class AgentIdentificationService:
 
             language = result_data.get("language", "es")
 
+            # Truncate segments if too many (sample from beginning, middle, end)
+            if len(segments) > 100:
+                sampled_segments = segments[:40] + segments[len(segments)//2 - 10:len(segments)//2 + 10] + segments[-40:]
+            else:
+                sampled_segments = segments
+
             formatted_segments = [
                 {
                     "text": s.get("text", "").strip(),
@@ -96,9 +102,13 @@ class AgentIdentificationService:
                     "end": s.get("end"),
                     "speaker": s.get("speaker")
                 }
-                for s in segments
+                for s in sampled_segments
             ]
             segments_json = json.dumps(formatted_segments, ensure_ascii=False)
+
+            # Final safety check
+            if len(segments_json) > 50000:
+                segments_json = segments_json[:50000] + '...]'
 
             language_labels = {
                 "es": {"agent": "Agente", "client": "Cliente"},

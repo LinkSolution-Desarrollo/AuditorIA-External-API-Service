@@ -171,7 +171,7 @@ class AuditService:
         """Get task and call_log data."""
         query = text("""
             SELECT t.uuid, t.file_name, t.status, t.result,
-                   cl.campaign_id, cl.operator_id, cl.user_id
+                   cl.campaign_id, cl.operator_id, cl.upload_by
             FROM tasks t
             LEFT JOIN call_logs cl ON cl.file_name = t.file_name
             WHERE t.uuid = :uuid
@@ -186,7 +186,7 @@ class AuditService:
                 "result": result[3],
                 "campaign_id": result[4],
                 "operator_id": result[5],
-                "user_id": result[6]
+                "user_id": result[6]  # Still use 'user_id' key for consistency
             }
         return None
 
@@ -194,7 +194,7 @@ class AuditService:
     def _get_audit_criteria(db: Session, campaign_id: int) -> List[Dict]:
         """Get audit criteria for campaign."""
         query = text("""
-            SELECT id, criterion, target_score
+            SELECT id, question, target_score
             FROM audit_criteria
             WHERE campaign_id = :campaign_id
             ORDER BY id
@@ -211,7 +211,7 @@ class AuditService:
         query = text("""
             SELECT approval_score
             FROM campaigns
-            WHERE id = :campaign_id
+            WHERE campaign_id = :campaign_id
             LIMIT 1
         """)
         result = db.execute(query, {"campaign_id": campaign_id}).scalar()
