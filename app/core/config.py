@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     ALLOWED_EXTENSIONS: set = {".mp3", ".wav", ".ogg", ".m4a", ".flac", ".aac"}
     CORS_ORIGINS: list[str] = ["*"]
 
+    # OpenAI
+    OPENAI_API_KEY: Optional[str] = None
+
     class Config:
         env_file = ".env"
         case_sensitive = True
