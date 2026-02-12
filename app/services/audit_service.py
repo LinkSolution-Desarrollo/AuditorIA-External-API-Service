@@ -144,16 +144,15 @@ class AuditService:
         """Check if audit already exists."""
         if is_call:
             query = text("""
-                SELECT task_uuid, score, is_audit_failure, generated_by_user,
-                       jsonb_array_elements(audit) as audit_item
-                FROM operator_quality
+                SELECT task_uuid, score, is_audit_failure, generated_by_user
+                FROM audits
                 WHERE task_uuid = :uuid
                 LIMIT 1
             """)
         else:
             query = text("""
                 SELECT chat_uuid, score, is_audit_failure, generated_by_user
-                FROM chats_quality
+                FROM audits
                 WHERE chat_uuid = :uuid
                 LIMIT 1
             """)
@@ -321,7 +320,7 @@ Instrucciones:
     ) -> int:
         """Insert audit into database."""
         query = text("""
-            INSERT INTO operator_quality
+            INSERT INTO audits
             (task_uuid, campaign_id, user_id, score, is_audit_failure,
              audit, generated_by_user, created_at)
             VALUES (:task_uuid, :campaign_id, :user_id, :score, :is_audit_failure,

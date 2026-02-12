@@ -11,9 +11,12 @@ import os
 import tempfile
 import shutil
 import uuid
+import logging
 from datetime import datetime
 from app.schemas.transcription import TranscriptionConfig
 from mutagen import File as MutagenFile
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/upload",
@@ -132,7 +135,14 @@ async def upload_file(
             audio_info = MutagenFile(tmp_path)
             if audio_info is not None and getattr(audio_info, "info", None) is not None:
                 audio_duration = getattr(audio_info.info, "length", None)
-        except Exception:
+                if audio_duration:
+                    logger.info(f"Audio duration calculated: {audio_duration}s for {file.filename}")
+                else:
+                    logger.warning(f"Audio duration not available in file info for {file.filename}")
+            else:
+                logger.warning(f"Could not read audio file with mutagen: {file.filename}")
+        except Exception as e:
+            logger.error(f"Error calculating audio duration for {file.filename}: {e}")
             audio_duration = None
 
         # Clean up temp file

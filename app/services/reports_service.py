@@ -35,11 +35,11 @@ class ReportsService:
         end_date = datetime.utcnow()
         start_date = end_date - timedelta(days=days)
         query = text("""
-            SELECT 
+            SELECT
                 COUNT(*) as total,
                 AVG(score) as avg_score,
                 SUM(CASE WHEN is_audit_failure = true THEN 1 ELSE 0 END) as failures
-            FROM operator_quality
+            FROM audits
             WHERE created_at >= :start_date AND created_at <= :end_date
         """)
         result = db.execute(query, {"start_date": start_date, "end_date": end_date}).fetchone()

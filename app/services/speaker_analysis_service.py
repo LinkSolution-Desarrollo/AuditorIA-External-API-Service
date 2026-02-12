@@ -100,10 +100,10 @@ Do NOT return a list.
 Identify roles (Agent, Customer) and refer to them as such.
 
 # Example Output
-{
+{{
   "SPEAKER_00": "Description...",
   "SPEAKER_01": "Description..."
-}"""
+}}"""
 
             transcription_text = json.dumps(segments, ensure_ascii=False)
 
