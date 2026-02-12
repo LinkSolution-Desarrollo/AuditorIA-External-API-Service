@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, cast, String
 from typing import List, Optional
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -8,7 +8,8 @@ from slowapi.util import get_remote_address
 from app.core.database import get_db
 from app.models import Task, GlobalApiKey
 from app.middleware.auth import get_api_key
-from app.schemas import TaskSummary, TaskDetail
+from app.schemas import TaskSimple, Result, Metadata
+from app.core.config import get_settings
 
 router = APIRouter(
     prefix="/tasks",
@@ -18,7 +19,7 @@ router = APIRouter(
 
 limiter = Limiter(key_func=get_remote_address)
 
-@router.get("/", response_model=List[TaskSummary])
+@router.get("/", response_model=List[TaskSimple])
 @limiter.limit("20/minute")
 def list_tasks(
     request: Request, # Required for limiter
@@ -30,20 +31,26 @@ def list_tasks(
     """
     List tasks created by this API Key.
     """
-    # Filtering by JSONB in SQLAlchemy
-    # We want tasks where task_params -> 'api_key_id' == api_key.id
-    # Note: We cast to text because JSONB comparison can be tricky depending on how it was stored (int vs str)
-    
-    # Using text() for JSONB operator if standard filter fails, but let's try pythonic way first if model supports it
-    # task_params is JSON. 
-    
-    tasks = db.query(Task).filter(
-        Task.task_params['api_key_id'].astext == str(api_key.id)
+    tasks_db = db.query(Task).filter(
+        cast(Task.task_params['api_key_id'], String) == str(api_key.id)
     ).order_by(Task.created_at.desc()).offset(skip).limit(limit).all()
     
+    # Map to TaskSimple
+    tasks = []
+    for t in tasks_db:
+        tasks.append(TaskSimple(
+            identifier=t.uuid,
+            status=t.status,
+            task_type=t.task_type or "unknown",
+            file_name=t.file_name,
+            language=t.language,
+            audio_duration=t.audio_duration,
+            created_at=t.created_at
+        ))
+        
     return tasks
 
-@router.get("/{task_uuid}", response_model=TaskDetail)
+@router.get("/{task_uuid}", response_model=Result)
 @limiter.limit("60/minute")
 def get_task(
     request: Request,
@@ -56,13 +63,29 @@ def get_task(
     """
     task = db.query(Task).filter(
         Task.uuid == task_uuid,
-        Task.task_params['api_key_id'].astext == str(api_key.id)
+        cast(Task.task_params['api_key_id'], String) == str(api_key.id)
     ).first()
     
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     
-    return task
+    # Construct Metadata
+    meta = Metadata(
+        task_type=task.task_type or "unknown",
+        task_params=task.task_params,
+        language=task.language,
+        file_name=task.file_name,
+        url=task.url,
+        duration=task.duration,
+        audio_duration=task.audio_duration
+    )
+    
+    return Result(
+        status=task.status,
+        result=task.result,
+        metadata=meta,
+        error=task.error
+    )
 
 @router.get("/{task_uuid}/audio")
 @limiter.limit("5/minute")
@@ -77,7 +100,7 @@ async def get_task_audio(
     """
     task = db.query(Task).filter(
         Task.uuid == task_uuid,
-        Task.task_params['api_key_id'].astext == str(api_key.id)
+        cast(Task.task_params['api_key_id'], String) == str(api_key.id)
     ).first()
     
     if not task:
@@ -87,7 +110,6 @@ async def get_task_audio(
     bucket_name = settings.S3_BUCKET
     
     # We stored 'external_uploads/uuid_file' in task.url
-    # or sometimes full url? In External API, we save object key in task.url in upload.py
     object_key = task.url 
     
     try:
@@ -107,7 +129,6 @@ async def get_task_audio(
             }
         )
     except Exception as e:
-        # If headers already sent, this might fail, but for now...
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/{task_uuid}", status_code=204)
@@ -125,7 +146,7 @@ def delete_task(
     """
     task = db.query(Task).filter(
         Task.uuid == task_uuid,
-        Task.task_params['api_key_id'].astext == str(api_key.id)
+        cast(Task.task_params['api_key_id'], String) == str(api_key.id)
     ).first()
     
     if not task:

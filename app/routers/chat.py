@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
+from sqlalchemy import cast, String
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -20,7 +21,7 @@ limiter = Limiter(key_func=get_remote_address)
 def verify_task_ownership(db: Session, uuid: str, api_key_id: int):
     task = db.query(Task).filter(
         Task.uuid == uuid,
-        Task.task_params['api_key_id'].astext == str(api_key_id)
+        cast(Task.task_params['api_key_id'], String) == str(api_key_id)
     ).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found or access denied")

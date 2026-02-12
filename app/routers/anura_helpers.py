@@ -1,7 +1,7 @@
 """
 Additional endpoints for Anura integration helpers.
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -19,6 +19,7 @@ router = APIRouter(
 @router.get("/campaigns")
 @limiter.limit("20/minute")
 async def list_campaigns(
+    request: Request,
     db: Session = Depends(get_db),
     api_key: GlobalApiKey = Depends(get_api_key),
 ):
@@ -51,6 +52,7 @@ async def list_campaigns(
 @router.get("/mapping-guide")
 @limiter.limit("10/minute")
 async def get_mapping_guide(
+    request: Request,
     db: Session = Depends(get_db),
     api_key: GlobalApiKey = Depends(get_api_key),
 ):
@@ -123,6 +125,7 @@ async def get_mapping_guide(
 @router.get("/stats")
 @limiter.limit("20/minute")
 async def get_integration_stats(
+    request: Request,
     db: Session = Depends(get_db),
     api_key: GlobalApiKey = Depends(get_api_key),
 ):
@@ -180,6 +183,7 @@ async def get_integration_stats(
 @router.post("/validate-mapping")
 @limiter.limit("10/minute")
 async def validate_mapping(
+    request: Request,
     mapping: dict,
     db: Session = Depends(get_db),
     api_key: GlobalApiKey = Depends(get_api_key),

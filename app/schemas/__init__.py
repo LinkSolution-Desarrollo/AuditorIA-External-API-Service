@@ -1,4 +1,4 @@
-from .task import TaskSummary, TaskDetail
+from .task import TaskSimple, Result, Metadata, TaskUpdate, ResultTasks
 from .audit import AuditRequest, AuditResponse
 from .tags import TagsResponse
 from .speaker_analysis import SpeakerAnalysisResponse

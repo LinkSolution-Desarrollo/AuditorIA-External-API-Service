@@ -14,7 +14,7 @@ limiter = Limiter(key_func=get_remote_address)
 
 @router.get("/tasks", response_model=TaskStatsResponse)
 @limiter.limit("30/minute")
-def get_task_stats(req: Request, days: int = Query(30), db: Session = Depends(get_db), api_key: GlobalApiKey = Depends(get_api_key)):
+def get_task_stats(request: Request, days: int = Query(30), db: Session = Depends(get_db), api_key: GlobalApiKey = Depends(get_api_key)):
     try:
         return ReportsService.get_task_stats(db, days)
     except Exception as e:
@@ -22,7 +22,7 @@ def get_task_stats(req: Request, days: int = Query(30), db: Session = Depends(ge
 
 @router.get("/audits", response_model=AuditStatsResponse)
 @limiter.limit("30/minute")
-def get_audit_stats(req: Request, days: int = Query(30), db: Session = Depends(get_db), api_key: GlobalApiKey = Depends(get_api_key)):
+def get_audit_stats(request: Request, days: int = Query(30), db: Session = Depends(get_db), api_key: GlobalApiKey = Depends(get_api_key)):
     try:
         return ReportsService.get_audit_stats(db, days)
     except Exception as e:
@@ -30,7 +30,7 @@ def get_audit_stats(req: Request, days: int = Query(30), db: Session = Depends(g
 
 @router.get("/summary", response_model=ReportSummaryResponse)
 @limiter.limit("10/minute")
-def get_summary(req: Request, days: int = Query(30), db: Session = Depends(get_db), api_key: GlobalApiKey = Depends(get_api_key)):
+def get_summary(request: Request, days: int = Query(30), db: Session = Depends(get_db), api_key: GlobalApiKey = Depends(get_api_key)):
     try:
         from datetime import datetime
         task_stats = ReportsService.get_task_stats(db, days)

@@ -12,7 +12,7 @@ limiter = Limiter(key_func=get_remote_address)
 
 @router.get("/{task_uuid}", response_model=AgentIdentificationResponse)
 @limiter.limit("20/minute")
-def get_identification(req: Request, task_uuid: str, db: Session = Depends(get_db), api_key: GlobalApiKey = Depends(get_api_key)):
+def get_identification(request: Request, task_uuid: str, db: Session = Depends(get_db), api_key: GlobalApiKey = Depends(get_api_key)):
     from app.services.agent_identification_service import AgentIdentificationService
     try:
         ident = AgentIdentificationService.get_identification(db, task_uuid)

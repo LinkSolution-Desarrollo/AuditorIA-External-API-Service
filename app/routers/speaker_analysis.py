@@ -12,7 +12,7 @@ limiter = Limiter(key_func=get_remote_address)
 
 @router.get("/{task_uuid}", response_model=SpeakerAnalysisResponse)
 @limiter.limit("20/minute")
-def get_analysis(req: Request, task_uuid: str, generate_new: bool = Query(False), db: Session = Depends(get_db), api_key: GlobalApiKey = Depends(get_api_key)):
+def get_analysis(request: Request, task_uuid: str, generate_new: bool = Query(False), db: Session = Depends(get_db), api_key: GlobalApiKey = Depends(get_api_key)):
     from app.services.speaker_analysis_service import SpeakerAnalysisService
     try:
         analysis = SpeakerAnalysisService.get_analysis(db, task_uuid)

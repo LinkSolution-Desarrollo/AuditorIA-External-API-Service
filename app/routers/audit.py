@@ -12,13 +12,13 @@ limiter = Limiter(key_func=get_remote_address)
 
 @router.post("/generate", response_model=AuditResponse)
 @limiter.limit("10/minute")
-def generate_audit(request: AuditRequest, req: Request, db: Session = Depends(get_db), api_key: GlobalApiKey = Depends(get_api_key)):
+def generate_audit(audit_req: AuditRequest, request: Request, db: Session = Depends(get_db), api_key: GlobalApiKey = Depends(get_api_key)):
     from app.services.audit_service import AuditService
     try:
-        if request.is_call:
-            result = AuditService.generate_audit_for_call(db, request.task_uuid)
+        if audit_req.is_call:
+            result = AuditService.generate_audit_for_call(db, audit_req.task_uuid)
         else:
-            result = AuditService.generate_audit_for_chat(db, request.task_uuid)
+            result = AuditService.generate_audit_for_chat(db, audit_req.task_uuid)
         if not result.get("success"):
             raise HTTPException(status_code=400, detail=result)
         return result
