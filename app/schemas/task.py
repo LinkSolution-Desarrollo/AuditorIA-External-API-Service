@@ -51,7 +51,7 @@ class TaskSimple(BaseModel):
     # Validation alias to map from DB model fields if names differ
     # But here names are mostly same, except identifier -> uuid
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class ResultTasks(BaseModel):
     """Collection of tasks for list endpoints."""

@@ -153,9 +153,9 @@ Return ONLY JSON:
         """Save tags to database."""
         query = text("""
             INSERT INTO generated_tags (uuid, tags, created_at)
-            VALUES (:uuid, :tags::jsonb, NOW())
+            VALUES (:uuid, :tags, NOW())
             ON CONFLICT (uuid) DO UPDATE
-            SET tags = :tags::jsonb, updated_at = NOW()
+            SET tags = :tags
         """)
         db.execute(query, {"uuid": task_uuid, "tags": json.dumps(tags_data)})
         db.commit()

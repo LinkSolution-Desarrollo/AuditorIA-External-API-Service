@@ -241,6 +241,20 @@ class AuditService:
     ) -> Dict[str, Any]:
         """Generate audit using OpenAI."""
         try:
+            # Truncate transcription to avoid context length errors
+            transcription_data = json.loads(transcription) if isinstance(transcription, str) else transcription
+            segments = transcription_data.get("segments", [])
+
+            # Sample segments if too many
+            if len(segments) > 100:
+                sampled_segments = segments[:40] + segments[len(segments)//2 - 10:len(segments)//2 + 10] + segments[-40:]
+                transcription_data["segments"] = sampled_segments
+
+            # Convert back to string and apply final size limit
+            truncated_transcription = json.dumps(transcription_data, ensure_ascii=False)
+            if len(truncated_transcription) > 50000:
+                truncated_transcription = truncated_transcription[:50000] + '...]'
+
             criteria_text = "\n".join([
                 f"- {c['criterion']} (Puntaje máximo: {c['target_score']})"
                 for c in criteria
@@ -271,7 +285,7 @@ Instrucciones:
                 model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": transcription}
+                    {"role": "user", "content": truncated_transcription}
                 ],
                 response_format={"type": "json_object"},
                 temperature=0.3
@@ -324,7 +338,7 @@ Instrucciones:
             (task_uuid, campaign_id, user_id, score, is_audit_failure,
              audit, generated_by_user, created_at)
             VALUES (:task_uuid, :campaign_id, :user_id, :score, :is_audit_failure,
-                    :audit::jsonb, :generated_by_user, NOW())
+                    :audit, :generated_by_user, NOW())
             RETURNING id
         """)
         result = db.execute(query, {

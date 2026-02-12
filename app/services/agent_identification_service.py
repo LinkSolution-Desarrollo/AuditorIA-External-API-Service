@@ -48,7 +48,7 @@ class AgentIdentificationService:
         """Get existing identification."""
         query = text("""
             SELECT agent_identification
-            FROM agent_identification
+            FROM agent_identifications
             WHERE original_uuid = :uuid
             LIMIT 1
         """)
@@ -154,10 +154,10 @@ Segments:
     def _save_identification(db: Session, task_uuid: str, identification: Dict[str, str]):
         """Save identification to database."""
         query = text("""
-            INSERT INTO agent_identification (original_uuid, agent_identification, created_at)
-            VALUES (:uuid, :identification::jsonb, NOW())
+            INSERT INTO agent_identifications (original_uuid, agent_identification, created_at)
+            VALUES (:uuid, :identification, NOW())
             ON CONFLICT (original_uuid) DO UPDATE
-            SET agent_identification = :identification::jsonb, updated_at = NOW()
+            SET agent_identification = :identification
         """)
         db.execute(query, {"uuid": task_uuid, "identification": json.dumps(identification)})
         db.commit()

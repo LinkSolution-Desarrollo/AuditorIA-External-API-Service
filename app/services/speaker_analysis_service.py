@@ -154,9 +154,9 @@ Identify roles (Agent, Customer) and refer to them as such.
         """Save analysis to database."""
         query = text("""
             INSERT INTO speaker_analysis (task_uuid, analysis, created_at)
-            VALUES (:uuid, :analysis::jsonb, NOW())
+            VALUES (:uuid, :analysis, NOW())
             ON CONFLICT (task_uuid) DO UPDATE
-            SET analysis = :analysis::jsonb, updated_at = NOW()
+            SET analysis = :analysis
         """)
         db.execute(query, {"uuid": task_uuid, "analysis": json.dumps(analysis)})
         db.commit()

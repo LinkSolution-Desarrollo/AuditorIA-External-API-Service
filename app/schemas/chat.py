@@ -11,7 +11,7 @@ class ChatMessage(BaseModel):
     created_at: datetime
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class ChatHistoryResponse(BaseModel):
     messages: List[ChatMessage]
