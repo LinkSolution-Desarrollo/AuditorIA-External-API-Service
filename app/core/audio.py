@@ -58,7 +58,11 @@ def get_audio_duration(file_path: str) -> float:
             duration = float(audio.info.length)
             logger.info(f"Mutagen duration: {duration}s for {file_path}")
             return duration
+        else:
+            logger.warning(f"Mutagen could not read duration for {file_path}")
     except Exception as e:
         logger.error(f"Mutagen failed for {file_path}: {e}")
 
+    logger.error(
+        f"Could not determine duration for {file_path} (File size: {os.path.getsize(file_path)} bytes)")
     return 0.0

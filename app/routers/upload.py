@@ -53,6 +53,7 @@ async def upload_file(
 
     try:
         # Create a temp file
+        total_bytes_read = 0
         with tempfile.NamedTemporaryFile(delete=False) as tmp:
             await file.seek(0)  # Ensure we are at the beginning
             while True:
@@ -60,11 +61,19 @@ async def upload_file(
                 if not chunk:
                     break
                 tmp.write(chunk)
+                total_bytes_read += len(chunk)
             tmp_path = tmp.name
 
         # Check size and log it
         file_size = os.path.getsize(tmp_path)
-        print(f"DEBUG: Temp file size: {file_size} bytes")
+        print(f"DEBUG: Reported file size: {file.size}")
+        print(f"DEBUG: Total bytes read into temp: {total_bytes_read}")
+        print(f"DEBUG: Temp file size on disk: {file_size} bytes")
+
+        if file_size == 0:
+            os.unlink(tmp_path)
+            raise HTTPException(
+                status_code=400, detail="The uploaded file is empty.")
 
         if file_size > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
             os.unlink(tmp_path)
