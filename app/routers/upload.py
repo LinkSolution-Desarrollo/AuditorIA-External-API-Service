@@ -14,7 +14,6 @@ import shutil
 import uuid
 from datetime import datetime
 from app.schemas.transcription import TranscriptionConfig
-from mutagen import File as MutagenFile
 
 router = APIRouter(
     prefix="/upload",
@@ -130,15 +129,6 @@ async def upload_file(
             "username": username,
         }
 
-        # Best-effort audio duration (seconds)
-        audio_duration = None
-        try:
-            audio_info = MutagenFile(tmp_path)
-            if audio_info is not None and getattr(audio_info, "info", None) is not None:
-                audio_duration = getattr(audio_info.info, "length", None)
-        except Exception:
-            audio_duration = None
-
         # Clean up temp file
         os.unlink(tmp_path)
 
@@ -165,7 +155,7 @@ async def upload_file(
             upload_by=username,
             url=object_name,
             log=f"Uploaded via External API (Task UUID: {file_uuid})",
-            sectot=audio_duration   
+            sectot=audio_duration
         )
         db.add(new_call_log)
 
