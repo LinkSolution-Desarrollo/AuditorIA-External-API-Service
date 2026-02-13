@@ -54,11 +54,18 @@ async def upload_file(
     try:
         # Create a temp file
         with tempfile.NamedTemporaryFile(delete=False) as tmp:
-            shutil.copyfileobj(file.file, tmp)
+            await file.seek(0)  # Ensure we are at the beginning
+            while True:
+                chunk = await file.read(1024 * 1024)  # 1MB chunks
+                if not chunk:
+                    break
+                tmp.write(chunk)
             tmp_path = tmp.name
 
-        # Check size
+        # Check size and log it
         file_size = os.path.getsize(tmp_path)
+        print(f"DEBUG: Temp file size: {file_size} bytes")
+
         if file_size > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
             os.unlink(tmp_path)
             raise HTTPException(

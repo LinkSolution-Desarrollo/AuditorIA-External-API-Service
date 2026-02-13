@@ -24,6 +24,9 @@ def get_audio_duration(file_path: str) -> float:
         ]
         result = subprocess.run(
             cmd, capture_output=True, text=True, check=True)
+        if result.stderr:
+            logger.debug(f"FFprobe stderr: {result.stderr}")
+
         data = json.loads(result.stdout)
 
         duration = None
@@ -37,7 +40,13 @@ def get_audio_duration(file_path: str) -> float:
 
         if duration is not None:
             logger.info(f"FFprobe duration: {duration}s for {file_path}")
+            if duration < 0.5 and os.path.getsize(file_path) > 100000:
+                logger.warning(
+                    f"Extremely short duration ({duration}s) for large file ({os.path.getsize(file_path)} bytes)")
             return duration
+        else:
+            logger.warning(
+                f"FFprobe could not find duration in metadata for {file_path}. JSON: {data}")
 
     except Exception as e:
         logger.warning(f"FFprobe failed for {file_path}: {e}")
