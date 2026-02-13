@@ -66,6 +66,7 @@ async def upload_file(
 
         # Get audio duration
         audio_duration = get_audio_duration(tmp_path)
+        print(f"DEBUG: Calculated audio_duration = {audio_duration}")
 
         object_name = f"{username}/{file.filename}"
 
