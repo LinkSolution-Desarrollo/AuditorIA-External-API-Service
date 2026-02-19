@@ -35,10 +35,10 @@ def list_tasks(
     # We want tasks where task_params -> 'api_key_id' == api_key.id
     # Note: We cast to text because JSON comparison requires text conversion
 
-    tasks = db.query(Task).filter(
+    tasks_db = db.query(Task).filter(
         cast(Task.task_params['api_key_id'], Text) == str(api_key.id)
     ).order_by(Task.created_at.desc()).offset(skip).limit(limit).all()
-    
+
     # Map to TaskSimple
     tasks = []
     for t in tasks_db:
