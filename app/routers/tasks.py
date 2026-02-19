@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, cast, Text
 from typing import List, Optional
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -30,15 +30,12 @@ def list_tasks(
     """
     List tasks created by this API Key.
     """
-    # Filtering by JSONB in SQLAlchemy
+    # Filtering by JSON in SQLAlchemy
     # We want tasks where task_params -> 'api_key_id' == api_key.id
-    # Note: We cast to text because JSONB comparison can be tricky depending on how it was stored (int vs str)
-    
-    # Using text() for JSONB operator if standard filter fails, but let's try pythonic way first if model supports it
-    # task_params is JSON. 
-    
+    # Note: We cast to text because JSON comparison requires text conversion
+
     tasks = db.query(Task).filter(
-        Task.task_params['api_key_id'].astext == str(api_key.id)
+        cast(Task.task_params['api_key_id'], Text) == str(api_key.id)
     ).order_by(Task.created_at.desc()).offset(skip).limit(limit).all()
     
     return tasks
@@ -56,7 +53,7 @@ def get_task(
     """
     task = db.query(Task).filter(
         Task.uuid == task_uuid,
-        Task.task_params['api_key_id'].astext == str(api_key.id)
+        cast(Task.task_params['api_key_id'], Text) == str(api_key.id)
     ).first()
     
     if not task:
@@ -77,7 +74,7 @@ async def get_task_audio(
     """
     task = db.query(Task).filter(
         Task.uuid == task_uuid,
-        Task.task_params['api_key_id'].astext == str(api_key.id)
+        cast(Task.task_params['api_key_id'], Text) == str(api_key.id)
     ).first()
     
     if not task:
@@ -125,7 +122,7 @@ def delete_task(
     """
     task = db.query(Task).filter(
         Task.uuid == task_uuid,
-        Task.task_params['api_key_id'].astext == str(api_key.id)
+        cast(Task.task_params['api_key_id'], Text) == str(api_key.id)
     ).first()
     
     if not task:
