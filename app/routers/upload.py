@@ -5,6 +5,7 @@ from slowapi.util import get_remote_address
 from app.core.database import get_db
 from app.services.s3_service import upload_fileobj_to_s3, check_file_exists_in_s3
 from app.models import Task, GlobalApiKey, Campaign, CallLog
+from app.middleware.auth import get_api_key, ApiKeyData
 from app.core.validation import validate_file
 from app.core.audio import get_audio_duration
 from app.core.config import get_settings
@@ -12,12 +13,16 @@ import os
 import tempfile
 import shutil
 import uuid
+import logging
 from datetime import datetime
 from app.schemas.transcription import TranscriptionConfig
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/upload",
     tags=["Upload"],
+    dependencies=[Depends(get_api_key)]
 )
 
 settings = get_settings()
@@ -35,6 +40,7 @@ async def upload_file(
     operator_id: int = Form(...),
     config: TranscriptionConfig = Depends(TranscriptionConfig.as_form),
     db: Session = Depends(get_db),
+    api_key: ApiKeyData = Depends(get_api_key),
 ):
     # Check if campaign exists
     campaign = db.query(Campaign).filter(
@@ -144,7 +150,24 @@ async def upload_file(
             "max_speakers": None,
             "s3_path": object_name,
             "username": username,
+            "api_key_id": api_key.id,  # Store API key ID for filtering
         }
+
+        # Best-effort audio duration (seconds)
+        audio_duration = None
+        try:
+            audio_info = MutagenFile(tmp_path)
+            if audio_info is not None and getattr(audio_info, "info", None) is not None:
+                audio_duration = getattr(audio_info.info, "length", None)
+                if audio_duration:
+                    logger.info(f"Audio duration calculated: {audio_duration}s for {file.filename}")
+                else:
+                    logger.warning(f"Audio duration not available in file info for {file.filename}")
+            else:
+                logger.warning(f"Could not read audio file with mutagen: {file.filename}")
+        except Exception as e:
+            logger.error(f"Error calculating audio duration for {file.filename}: {e}")
+            audio_duration = None
 
         # Clean up temp file
         os.unlink(tmp_path)
