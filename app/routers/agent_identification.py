@@ -1,16 +1,17 @@
+from app.core.limiter import limiter
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
-from slowapi import Limiter
-from slowapi.util import get_remote_address
+
+
 from app.core.database import get_db
 from app.models import GlobalApiKey
 from app.middleware.auth import get_api_key
-from app.schemas.agent_identification import AgentIdentificationResponse
+# Removed schema import
 
 router = APIRouter(prefix="/agent-identification", tags=["Agent ID"], dependencies=[Depends(get_api_key)])
-limiter = Limiter(key_func=get_remote_address)
 
-@router.get("/{task_uuid}", response_model=AgentIdentificationResponse)
+
+@router.get("/{task_uuid}", )
 @limiter.limit("20/minute")
 def get_identification(request: Request, task_uuid: str, db: Session = Depends(get_db), api_key: GlobalApiKey = Depends(get_api_key)):
     from app.services.agent_identification_service import AgentIdentificationService

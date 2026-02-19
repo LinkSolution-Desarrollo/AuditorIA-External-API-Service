@@ -12,6 +12,7 @@ services:
       # Override localhost with host.docker.internal for container-to-host communication
       # Users should ensure their .env uses these or they are set here if defaults are localhost
       - DB_HOST=host.docker.internal
+      - DB_URL=postgresql://root:password@host.docker.internal:5432/auditoria_db
       - MINIO_ENDPOINT=host.docker.internal:9000
     extra_hosts:
       - "host.docker.internal:host-gateway"

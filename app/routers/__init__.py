@@ -5,8 +5,8 @@ from .campaigns import router as campaigns_router
 from .webhooks import router as webhooks_router
 from .anura_helpers import router as anura_helpers_router
 from .test_utils import router as test_utils_router
-from .audit import router as audit_router
 from .tags import router as tags_router
 from .speaker_analysis import router as speaker_analysis_router
 from .agent_identification import router as agent_identification_router
-from .reports import router as reports_router
+from .audit import router as audit_router
+# from .reports import router as reports_router  # Commented out - service doesn't exist

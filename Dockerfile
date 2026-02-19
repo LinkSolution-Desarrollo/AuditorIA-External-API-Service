@@ -8,9 +8,10 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Install system dependencies (needed for python-magic and general build tools)
+# Install system dependencies (needed for python-magic, ffmpeg, and general build tools)
 RUN apt-get update && apt-get install -y \
     libmagic1 \
+    ffmpeg \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
