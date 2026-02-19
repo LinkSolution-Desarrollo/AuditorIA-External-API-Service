@@ -1,0 +1,347 @@
+{
+  "info": {
+    "name": "AuditorIA External API",
+    "description": "API externa para generar auditorías, tags, análisis de hablantes y reportería",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8001",
+      "type": "string"
+    },
+    {
+      "key": "api_key",
+      "value": "TU_API_KEY_AQUI",
+      "type": "string"
+    },
+    {
+      "key": "task_uuid",
+      "value": "075bcc8c-8fe5-11f0-b36d-0242ac110007",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Audit",
+      "item": [
+        {
+          "name": "Generate Audit for Call",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"task_uuid\": \"{{task_uuid}}\",\n  \"is_call\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/audit/generate",
+              "host": ["{{base_url}}"],
+              "path": ["audit", "generate"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Generate Audit for Chat",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"task_uuid\": \"{{task_uuid}}\",\n  \"is_call\": false\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/audit/generate",
+              "host": ["{{base_url}}"],
+              "path": ["audit", "generate"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Tags",
+      "item": [
+        {
+          "name": "Get Tags",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tags/{{task_uuid}}",
+              "host": ["{{base_url}}"],
+              "path": ["tags", "{{task_uuid}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Generate New Tags",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tags/{{task_uuid}}?generate_new=true",
+              "host": ["{{base_url}}"],
+              "path": ["tags", "{{task_uuid}}"],
+              "query": [
+                {
+                  "key": "generate_new",
+                  "value": "true"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Speaker Analysis",
+      "item": [
+        {
+          "name": "Get Speaker Analysis",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/speaker-analysis/{{task_uuid}}",
+              "host": ["{{base_url}}"],
+              "path": ["speaker-analysis", "{{task_uuid}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Agent Identification",
+      "item": [
+        {
+          "name": "Get Agent Identification",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/agent-identification/{{task_uuid}}",
+              "host": ["{{base_url}}"],
+              "path": ["agent-identification", "{{task_uuid}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Reports",
+      "item": [
+        {
+          "name": "Task Statistics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/reports/tasks?days=30",
+              "host": ["{{base_url}}"],
+              "path": ["reports", "tasks"],
+              "query": [
+                {
+                  "key": "days",
+                  "value": "30",
+                  "description": "Number of days to look back"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Audit Statistics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/reports/audits?days=30",
+              "host": ["{{base_url}}"],
+              "path": ["reports", "audits"],
+              "query": [
+                {
+                  "key": "days",
+                  "value": "30"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Summary Report",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/reports/summary?days=30",
+              "host": ["{{base_url}}"],
+              "path": ["reports", "summary"],
+              "query": [
+                {
+                  "key": "days",
+                  "value": "30"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Existing Endpoints (Reference)",
+      "item": [
+        {
+          "name": "Upload Audio",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/upload/",
+              "host": ["{{base_url}}"],
+              "path": ["upload", ""]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Tasks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/?skip=0&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["tasks", ""],
+              "query": [
+                {
+                  "key": "skip",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Task Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/{{task_uuid}}",
+              "host": ["{{base_url}}"],
+              "path": ["tasks", "{{task_uuid}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

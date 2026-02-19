@@ -1,21 +1,18 @@
-from app.core.limiter import limiter
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
-
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from app.core.database import get_db
 from app.models import GlobalApiKey
 from app.middleware.auth import get_api_key
+from app.schemas.audit import AuditRequest, AuditResponse
 
-class AuditRequest(BaseModel):
-    task_uuid: str
-    is_call: bool = True
+router = APIRouter(prefix="/audit", tags=["Audit"], dependencies=[Depends(get_api_key)])
+limiter = Limiter(key_func=get_remote_address)
 
-router = APIRouter(prefix="/audit", tags=["Audit"])
-
-@router.post("/generate")
+@router.post("/generate", response_model=AuditResponse)
 @limiter.limit("10/minute")
-def generate_audit(audit_req: AuditRequest, request: Request, db: Session = Depends(get_db), api_key = Depends(get_api_key)):
+def generate_audit(audit_req: AuditRequest, request: Request, db: Session = Depends(get_db), api_key: GlobalApiKey = Depends(get_api_key)):
     from app.services.audit_service import AuditService
     try:
         if audit_req.is_call:
