@@ -3,3 +3,4 @@ __pycache__/
 .env
 venv/
 .vscode/
+gcp-deploy/.generated.env

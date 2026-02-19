@@ -1,0 +1,22 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    env:
+      - 'DOCKER_BUILDKIT=1'
+    args:
+      - build
+      - '--build-arg=NEXT_PUBLIC_API_URL=https://auditoria-backend-gw7wwpskbq-tl.a.run.app'
+      - '--build-arg=NEXT_PUBLIC_KEYCLOAK_URL=https://auditoria-keycloak-gw7wwpskbq-tl.a.run.app'
+      - '--build-arg=NEXT_PUBLIC_KEYCLOAK_REALM=auditoria'
+      - '--build-arg=NEXT_PUBLIC_KEYCLOAK_CLIENT_ID=Auditoria'
+      - '--build-arg=NEXT_PUBLIC_HIDE_BRANDING=false'
+      - '--build-arg=NEXT_PUBLIC_POSTHOG_KEY='
+      - '--build-arg=NEXT_PUBLIC_POSTHOG_HOST=https://app.posthog.com'
+      - '-t'
+      - 'southamerica-west1-docker.pkg.dev/test-cloud-01-463920/auditoria-registry/frontend:latest'
+      - '.'
+    timeout: 900s
+images:
+  - 'southamerica-west1-docker.pkg.dev/test-cloud-01-463920/auditoria-registry/frontend:latest'
+options:
+  machineType: E2_HIGHCPU_8
+  logging: CLOUD_LOGGING_ONLY

@@ -1,0 +1,43 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: auditoria-worker-deepgram
+  labels:
+    cloud.googleapis.com/location: southamerica-west1
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "1"
+        run.googleapis.com/cpu-throttling: "false"
+    spec:
+      serviceAccountName: auditoria-runner@test-cloud-01-463920.iam.gserviceaccount.com
+      containers:
+      - image: southamerica-west1-docker.pkg.dev/test-cloud-01-463920/auditoria-registry/worker-deepgram:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: BACKEND_URL
+          value: https://auditoria-backend-825136167029.southamerica-west1.run.app
+        - name: MINIO_URL
+          value: https://auditoria-minio-825136167029.southamerica-west1.run.app
+        - name: S3_ENDPOINT
+          value: https://auditoria-minio-825136167029.southamerica-west1.run.app
+        - name: S3_ACCESS_KEY
+          value: minioadmin
+        - name: S3_SECRET_KEY
+          value: minioadmin
+        - name: AUDIO_BUCKET_NAME
+          value: audios
+        - name: DEEPGRAM_API_KEY
+          value: PLACEHOLDER_DEEPGRAM_API_KEY
+        - name: DEEPGRAM_MODEL
+          value: nova-3
+        resources:
+          limits:
+            memory: 512Mi
+            cpu: "1"
+  traffic:
+  - percent: 100
+    latestRevision: true

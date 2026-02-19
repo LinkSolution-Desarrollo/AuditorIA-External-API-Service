@@ -1,0 +1,30 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: auditoria-frontend
+  labels:
+    cloud.googleapis.com/location: southamerica-west1
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "5"
+    spec:
+      serviceAccountName: auditoria-runner@test-cloud-01-463920.iam.gserviceaccount.com
+      containers:
+      - image: southamerica-west1-docker.pkg.dev/test-cloud-01-463920/auditoria-registry/frontend:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: API_URL
+          value: https://auditoria-backend-gw7wwpskbq-tl.a.run.app
+        - name: NODE_ENV
+          value: production
+        resources:
+          limits:
+            memory: 512Mi
+            cpu: "1"
+  traffic:
+  - percent: 100
+    latestRevision: true

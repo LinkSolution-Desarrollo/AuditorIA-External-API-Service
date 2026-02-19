@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker logs:*)",
+      "Bash(docker exec auditoria_backend curl -s http://auditoria_backend:8008/realms/auditoria/.well-known/openid-configuration)",
+      "Bash(python -m json.tool)",
+      "Bash(docker exec:*)",
+      "Bash(IMAGE_PREFIX=\"southamerica-west1-docker.pkg.dev/test-cloud-01-463920/auditoria-registry\")",
+      "Bash(gcloud builds submit:*)",
+      "Bash(PROJECT=\"test-cloud-01-463920\")",
+      "Bash(REGION=\"southamerica-west1\")",
+      "Bash(SA_EMAIL=\"auditoria-runner@$PROJECT.iam.gserviceaccount.com\")",
+      "Bash(__NEW_LINE_ce6e5cf01f325954__ echo \"Deployando MinIO...\")",
+      "Bash(MSYS_NO_PATHCONV=1 gcloud run deploy:*)",
+      "Bash(echo:*)",
+      "Bash(gcloud run services replace:*)",
+      "Bash(gcloud run services add-iam-policy-binding:*)",
+      "Bash(MINIO_URL=\"https://auditoria-minio-gw7wwpskbq-tl.a.run.app\":*)",
+      "Bash(KEYCLOAK_URL=\"https://auditoria-keycloak-gw7wwpskbq-tl.a.run.app\")",
+      "Bash(BACKEND_URL=\"https://auditoria-backend-gw7wwpskbq-tl.a.run.app\")",
+      "Bash(__NEW_LINE_3ebfa3add90ca6be__ echo \"Actualizando Backend con URLs correctas...\")",
+      "Bash(gcloud run services update:*)",
+      "Bash(__NEW_LINE_3ebfa3add90ca6be__ echo \"Actualizando Keycloak con hostname correcto...\")",
+      "Bash(__NEW_LINE_3ebfa3add90ca6be__ echo \"Actualizando Worker-Deepgram con URLs correctas...\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
