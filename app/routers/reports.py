@@ -1,18 +1,19 @@
+from app.core.limiter import limiter
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from typing import Optional
-from slowapi import Limiter
-from slowapi.util import get_remote_address
+
+
 from app.core.database import get_db
 from app.models import GlobalApiKey
 from app.middleware.auth import get_api_key
-from app.schemas.reports import TaskStatsResponse, AuditStatsResponse, ReportSummaryResponse
+# Removed schema import
 from app.services.reports_service import ReportsService
 
 router = APIRouter(prefix="/reports", tags=["Reports"], dependencies=[Depends(get_api_key)])
-limiter = Limiter(key_func=get_remote_address)
 
-@router.get("/tasks", response_model=TaskStatsResponse)
+
+@router.get("/tasks", )
 @limiter.limit("30/minute")
 def get_task_stats(request: Request, days: int = Query(30), db: Session = Depends(get_db), api_key: GlobalApiKey = Depends(get_api_key)):
     try:
@@ -20,7 +21,7 @@ def get_task_stats(request: Request, days: int = Query(30), db: Session = Depend
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/audits", response_model=AuditStatsResponse)
+@router.get("/audits", )
 @limiter.limit("30/minute")
 def get_audit_stats(request: Request, days: int = Query(30), db: Session = Depends(get_db), api_key: GlobalApiKey = Depends(get_api_key)):
     try:
@@ -28,7 +29,7 @@ def get_audit_stats(request: Request, days: int = Query(30), db: Session = Depen
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/summary", response_model=ReportSummaryResponse)
+@router.get("/summary", )
 @limiter.limit("10/minute")
 def get_summary(request: Request, days: int = Query(30), db: Session = Depends(get_db), api_key: GlobalApiKey = Depends(get_api_key)):
     try:

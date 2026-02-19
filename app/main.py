@@ -7,8 +7,8 @@ from slowapi.middleware import SlowAPIMiddleware
 from app.routers import (
     upload_router, tasks_router, chat_router, campaigns_router,
     webhooks_router, anura_helpers_router, test_utils_router,
-    audit_router, tags_router, speaker_analysis_router,
-    agent_identification_router, reports_router
+    tags_router, speaker_analysis_router, agent_identification_router,
+    audit_router  # reports_router removed - service doesn't exist
 )
 from app.core.config import get_settings
 from app.core.limiter import limiter
@@ -43,11 +43,11 @@ app.include_router(chat_router)
 app.include_router(campaigns_router)
 app.include_router(webhooks_router)
 app.include_router(anura_helpers_router)
-app.include_router(audit_router)
 app.include_router(tags_router)
 app.include_router(speaker_analysis_router)
 app.include_router(agent_identification_router)
-app.include_router(reports_router)
+app.include_router(audit_router)
+# app.include_router(reports_router)  # Commented out - service doesn't exist
 
 # Only include test endpoints in DEBUG mode
 if settings.DEBUG:

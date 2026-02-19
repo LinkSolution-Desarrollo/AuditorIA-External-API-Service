@@ -36,7 +36,7 @@ async def list_campaigns(
         "campaigns": [
             {
                 "campaign_id": c.campaign_id,
-                "name": c.name,
+                "name": c.campaign_name,
                 "description": c.description if hasattr(c, 'description') else None,
                 "anura_tag_format": f"campaign_{c.campaign_id}",
                 "example_webhook_payload": {

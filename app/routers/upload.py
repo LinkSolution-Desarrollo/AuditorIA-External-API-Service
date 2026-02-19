@@ -7,6 +7,7 @@ from app.services.s3_service import upload_fileobj_to_s3, check_file_exists_in_s
 from app.models import Task, GlobalApiKey, Campaign, CallLog
 from app.middleware.auth import get_api_key, ApiKeyData
 from app.core.validation import validate_file
+from app.core.audio import get_audio_duration
 from app.core.config import get_settings
 import os
 import tempfile
@@ -15,7 +16,6 @@ import uuid
 import logging
 from datetime import datetime
 from app.schemas.transcription import TranscriptionConfig
-from mutagen import File as MutagenFile
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ settings = get_settings()
 limiter = Limiter(key_func=get_remote_address)
 
 
-@router.post("/")
+@router.post("")
 @limiter.limit("10/minute")
 async def upload_file(
     request: Request,
@@ -59,16 +59,36 @@ async def upload_file(
 
     try:
         # Create a temp file
+        total_bytes_read = 0
         with tempfile.NamedTemporaryFile(delete=False) as tmp:
-            shutil.copyfileobj(file.file, tmp)
+            await file.seek(0)  # Ensure we are at the beginning
+            while True:
+                chunk = await file.read(1024 * 1024)  # 1MB chunks
+                if not chunk:
+                    break
+                tmp.write(chunk)
+                total_bytes_read += len(chunk)
             tmp_path = tmp.name
 
-        # Check size
+        # Check size and log it
         file_size = os.path.getsize(tmp_path)
+        print(f"DEBUG: Reported file size: {file.size}")
+        print(f"DEBUG: Total bytes read into temp: {total_bytes_read}")
+        print(f"DEBUG: Temp file size on disk: {file_size} bytes")
+
+        if file_size == 0:
+            os.unlink(tmp_path)
+            raise HTTPException(
+                status_code=400, detail="The uploaded file is empty.")
+
         if file_size > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
             os.unlink(tmp_path)
             raise HTTPException(
                 status_code=413, detail=f"File too large. Max size is {settings.MAX_UPLOAD_SIZE_MB}MB")
+
+        # Get audio duration
+        audio_duration = get_audio_duration(tmp_path)
+        print(f"DEBUG: Calculated audio_duration = {audio_duration}")
 
         object_name = f"{username}/{file.filename}"
 
@@ -161,7 +181,7 @@ async def upload_file(
             task_type="full_process",
             task_params=task_params,
             language=config.language or "es",
-            audio_duration=audio_duration,
+            audio_duration=audio_duration
         )
         db.add(new_task)
 
@@ -174,7 +194,8 @@ async def upload_file(
             operator_id=operator_id,
             upload_by=username,
             url=object_name,
-            log=f"Uploaded via External API (Task UUID: {file_uuid})"
+            log=f"Uploaded via External API (Task UUID: {file_uuid})",
+            sectot=audio_duration
         )
         db.add(new_call_log)
 

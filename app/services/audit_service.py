@@ -144,7 +144,7 @@ class AuditService:
         """Check if audit already exists."""
         if is_call:
             query = text("""
-                SELECT task_uuid, score, is_audit_failure, generated_by_user
+                SELECT task_uuid, score, is_audit_failure, generated_by_user, audit
                 FROM audits
                 WHERE task_uuid = :uuid
                 LIMIT 1
@@ -152,17 +152,21 @@ class AuditService:
         else:
             query = text("""
                 SELECT chat_uuid, score, is_audit_failure, generated_by_user
-                FROM audits
+                FROM chats_quality
                 WHERE chat_uuid = :uuid
                 LIMIT 1
             """)
         result = db.execute(query, {"uuid": task_uuid}).fetchone()
         if result:
+            audit_data = result[4] if is_call and len(result) > 4 else None
+            if audit_data and isinstance(audit_data, str):
+                audit_data = json.loads(audit_data)
             return {
                 "task_uuid": result[0],
                 "score": result[1],
                 "is_audit_failure": result[2],
-                "generated_by_user": result[3]
+                "generated_by_user": result[3],
+                "audit": audit_data if is_call else None
             }
         return None
 
@@ -186,7 +190,7 @@ class AuditService:
                 "result": result[3],
                 "campaign_id": result[4],
                 "operator_id": result[5],
-                "user_id": result[6]  # Still use 'user_id' key for consistency
+                "user_id": result[6]
             }
         return None
 
@@ -201,7 +205,7 @@ class AuditService:
         """)
         results = db.execute(query, {"campaign_id": campaign_id}).fetchall()
         return [
-            {"id": r[0], "criterion": r[1], "target_score": r[2]}
+            {"id": r[0], "question": r[1], "target_score": r[2]}
             for r in results
         ]
 
@@ -256,7 +260,7 @@ class AuditService:
                 truncated_transcription = truncated_transcription[:50000] + '...]'
 
             criteria_text = "\n".join([
-                f"- {c['criterion']} (Puntaje máximo: {c['target_score']})"
+                f"- {c['question']} (Puntaje máximo: {c['target_score']})"
                 for c in criteria
             ])
 
@@ -272,8 +276,8 @@ Instrucciones:
 {{
   "answers": [
     {{
-      "id": <criterion_id>,
-      "criterion": "<nombre>",
+      "id": <question_id>,
+      "question": "<nombre>",
       "target_score": <max>,
       "score": <dado>,
       "observations": "<justificación>"

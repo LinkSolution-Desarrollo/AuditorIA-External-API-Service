@@ -1,16 +1,17 @@
+from app.core.limiter import limiter
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
-from slowapi import Limiter
-from slowapi.util import get_remote_address
+
+
 from app.core.database import get_db
 from app.models import GlobalApiKey
 from app.middleware.auth import get_api_key
-from app.schemas.speaker_analysis import SpeakerAnalysisResponse
+# Removed schema import
 
 router = APIRouter(prefix="/speaker-analysis", tags=["Speaker Analysis"], dependencies=[Depends(get_api_key)])
-limiter = Limiter(key_func=get_remote_address)
 
-@router.get("/{task_uuid}", response_model=SpeakerAnalysisResponse)
+
+@router.get("/{task_uuid}", )
 @limiter.limit("20/minute")
 def get_analysis(request: Request, task_uuid: str, generate_new: bool = Query(False), db: Session = Depends(get_db), api_key: GlobalApiKey = Depends(get_api_key)):
     from app.services.speaker_analysis_service import SpeakerAnalysisService
