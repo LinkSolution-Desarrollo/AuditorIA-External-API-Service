@@ -13,29 +13,9 @@ updates:
     commit-message:
       prefix: "ci"
 
-  # ── Frontend (pnpm / npm) ───────────────────────────────────────
-  - package-ecosystem: "npm"
-    directory: "/AuditorIA-App/Frontend"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    labels:
-      - "dependencies"
-      - "javascript"
-    commit-message:
-      prefix: "chore(frontend)"
-    # Ignorar actualizaciones major de React/Next para evitar breaking changes inesperados
-    ignore:
-      - dependency-name: "react"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "react-dom"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "next"
-        update-types: ["version-update:semver-major"]
-
-  # ── Backend Python ──────────────────────────────────────────────
+  # ── Python (root requirements.txt) ─────────────────────────────
   - package-ecosystem: "pip"
-    directory: "/AuditorIA-App/Backend"
+    directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -43,90 +23,11 @@ updates:
       - "dependencies"
       - "python"
     commit-message:
-      prefix: "chore(backend)"
+      prefix: "chore"
 
-  # ── External API Service Python ─────────────────────────────────
-  - package-ecosystem: "pip"
-    directory: "/External-API-Service"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    labels:
-      - "dependencies"
-      - "python"
-    commit-message:
-      prefix: "chore(external-api)"
-
-  # ── Worker Deepgram Python ──────────────────────────────────────
-  - package-ecosystem: "pip"
-    directory: "/AuditorIA-App/Worker-Deepgram"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    labels:
-      - "dependencies"
-      - "python"
-    commit-message:
-      prefix: "chore(worker-deepgram)"
-
-  # ── Worker GPT Python ───────────────────────────────────────────
-  - package-ecosystem: "pip"
-    directory: "/AuditorIA-App/Worker-GPT"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    labels:
-      - "dependencies"
-      - "python"
-    commit-message:
-      prefix: "chore(worker-gpt)"
-    # torch y torchaudio tienen ciclos de release propios; actualizar con cuidado
-    ignore:
-      - dependency-name: "torch"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "torchaudio"
-        update-types: ["version-update:semver-major"]
-
-  # ── Worker Whisper Python ───────────────────────────────────────
-  - package-ecosystem: "pip"
-    directory: "/AuditorIA-App/Worker-Whisper"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    labels:
-      - "dependencies"
-      - "python"
-    commit-message:
-      prefix: "chore(worker-whisper)"
-    ignore:
-      - dependency-name: "torch"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "torchaudio"
-        update-types: ["version-update:semver-major"]
-
-  # ── Dockerfiles ─────────────────────────────────────────────────
+  # ── Docker ─────────────────────────────────────────────────────
   - package-ecosystem: "docker"
-    directory: "/AuditorIA-App/Backend"
-    schedule:
-      interval: "monthly"
-    labels:
-      - "dependencies"
-      - "docker"
-    commit-message:
-      prefix: "chore(docker)"
-
-  - package-ecosystem: "docker"
-    directory: "/AuditorIA-App/Frontend"
-    schedule:
-      interval: "monthly"
-    labels:
-      - "dependencies"
-      - "docker"
-    commit-message:
-      prefix: "chore(docker)"
-
-  - package-ecosystem: "docker"
-    directory: "/External-API-Service"
+    directory: "/"
     schedule:
       interval: "monthly"
     labels:

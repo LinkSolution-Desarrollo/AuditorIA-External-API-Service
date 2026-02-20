@@ -1,26 +1,15 @@
-name: CD — GCP Cloud Run
+name: CD — GCP Cloud Run (External API)
 
-# Se activa solo cuando todos los CI pasan en main.
-# También se puede triggear manualmente para un deploy puntual.
 on:
   push:
     branches: [main]
+    paths:
+      - "app/**"
+      - "requirements.txt"
+      - "Dockerfile"
   workflow_dispatch:
-    inputs:
-      service:
-        description: "Servicio a deployar (dejar vacío para todos)"
-        required: false
-        type: choice
-        options:
-          - all
-          - backend
-          - frontend
-          - external-api
-          - worker-deepgram
-        default: all
 
 concurrency:
-  # Solo un deploy a la vez en main
   group: cd-gcp-main
   cancel-in-progress: false
 
@@ -29,181 +18,13 @@ env:
   GCP_REGION: southamerica-west1
   AR_REPO: southamerica-west1-docker.pkg.dev/test-cloud-01-463920/auditoria
 
-# ── Secrets necesarios en GitHub → Settings → Secrets and variables → Actions ──
-# GCP_SA_KEY: JSON de la Service Account con roles:
-#   - roles/run.admin
-#   - roles/artifactregistry.writer
-#   - roles/iam.serviceAccountUser
-
 jobs:
-  # ─────────────────────────────────────────────
-  # Comprueba que los tests CI pasaron antes de deployar.
-  # Si no, no tiene sentido deployar código roto.
-  # ─────────────────────────────────────────────
-  verify-ci:
-    name: Verify CI passed
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Check last CI status
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "Deploy triggered for commit: ${{ github.sha }}"
-          echo "Branch: ${{ github.ref_name }}"
-          # En push a main, este job solo documenta el contexto.
-          # Para bloqueo real, configurar branch protection rules en GitHub.
-
-  # ─────────────────────────────────────────────
-  # BACKEND
-  # ─────────────────────────────────────────────
-  deploy-backend:
-    name: Deploy Backend
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: verify-ci
-    if: |
-      github.event_name == 'push' ||
-      inputs.service == 'all' ||
-      inputs.service == 'backend'
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Configure Docker for Artifact Registry
-        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
-
-      - name: Build & push Backend image
-        run: |
-          IMAGE="${{ env.AR_REPO }}/backend:${{ github.sha }}"
-          IMAGE_LATEST="${{ env.AR_REPO }}/backend:latest"
-
-          docker build \
-            --tag "$IMAGE" \
-            --tag "$IMAGE_LATEST" \
-            --cache-from "$IMAGE_LATEST" \
-            --build-arg BUILDKIT_INLINE_CACHE=1 \
-            AuditorIA-App/Backend
-
-          docker push "$IMAGE"
-          docker push "$IMAGE_LATEST"
-        env:
-          DOCKER_BUILDKIT: 1
-
-      - name: Deploy to Cloud Run
-        run: |
-          IMAGE="${{ env.AR_REPO }}/backend:${{ github.sha }}"
-          gcloud run deploy auditoria-backend \
-            --image "$IMAGE" \
-            --region ${{ env.GCP_REGION }} \
-            --project ${{ env.GCP_PROJECT_ID }} \
-            --quiet
-
-      - name: Verify deployment
-        run: |
-          URL=$(gcloud run services describe auditoria-backend \
-            --region ${{ env.GCP_REGION }} \
-            --project ${{ env.GCP_PROJECT_ID }} \
-            --format='value(status.url)')
-          echo "Backend URL: $URL"
-          # Health check básico
-          curl --fail --silent --max-time 30 "$URL/health" || \
-          curl --fail --silent --max-time 30 "$URL/docs" || \
-          echo "⚠️ Health check no disponible, verificar manualmente"
-
-  # ─────────────────────────────────────────────
-  # FRONTEND
-  # ─────────────────────────────────────────────
-  deploy-frontend:
-    name: Deploy Frontend
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    needs: verify-ci
-    if: |
-      github.event_name == 'push' ||
-      inputs.service == 'all' ||
-      inputs.service == 'frontend'
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Configure Docker for Artifact Registry
-        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
-
-      - name: Build & push Frontend image
-        run: |
-          IMAGE="${{ env.AR_REPO }}/frontend:${{ github.sha }}"
-          IMAGE_LATEST="${{ env.AR_REPO }}/frontend:latest"
-
-          docker build \
-            --tag "$IMAGE" \
-            --tag "$IMAGE_LATEST" \
-            --cache-from "$IMAGE_LATEST" \
-            --build-arg BUILDKIT_INLINE_CACHE=1 \
-            --build-arg NEXT_PUBLIC_API_URL="${{ secrets.NEXT_PUBLIC_API_URL }}" \
-            --build-arg NEXT_PUBLIC_KEYCLOAK_URL="${{ secrets.NEXT_PUBLIC_KEYCLOAK_URL }}" \
-            --build-arg NEXT_PUBLIC_KEYCLOAK_REALM="${{ secrets.NEXT_PUBLIC_KEYCLOAK_REALM }}" \
-            --build-arg NEXT_PUBLIC_KEYCLOAK_CLIENT_ID="${{ secrets.NEXT_PUBLIC_KEYCLOAK_CLIENT_ID }}" \
-            --build-arg NEXT_PUBLIC_POSTHOG_KEY="${{ secrets.NEXT_PUBLIC_POSTHOG_KEY }}" \
-            --build-arg NEXT_PUBLIC_POSTHOG_HOST="${{ secrets.NEXT_PUBLIC_POSTHOG_HOST }}" \
-            --build-arg NEXT_PUBLIC_SFTP_SERVICE_URL="${{ secrets.NEXT_PUBLIC_SFTP_SERVICE_URL }}" \
-            --build-arg NEXT_PUBLIC_VIDEO_BACKGROUND_URL="${{ secrets.NEXT_PUBLIC_VIDEO_BACKGROUND_URL }}" \
-            --build-arg NEXT_PUBLIC_HIDE_BRANDING="${{ secrets.NEXT_PUBLIC_HIDE_BRANDING }}" \
-            AuditorIA-App/Frontend
-        env:
-          DOCKER_BUILDKIT: 1
-
-      - name: Push images
-        run: |
-          docker push "${{ env.AR_REPO }}/frontend:${{ github.sha }}"
-          docker push "${{ env.AR_REPO }}/frontend:latest"
-
-      - name: Deploy to Cloud Run
-        run: |
-          IMAGE="${{ env.AR_REPO }}/frontend:${{ github.sha }}"
-          gcloud run deploy auditoria-frontend \
-            --image "$IMAGE" \
-            --region ${{ env.GCP_REGION }} \
-            --project ${{ env.GCP_PROJECT_ID }} \
-            --quiet
-
-  # ─────────────────────────────────────────────
-  # EXTERNAL API SERVICE
-  # ─────────────────────────────────────────────
-  deploy-external-api:
+  deploy:
     name: Deploy External API
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: verify-ci
-    if: |
-      github.event_name == 'push' ||
-      inputs.service == 'all' ||
-      inputs.service == 'external-api'
-
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
@@ -216,7 +37,7 @@ jobs:
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
 
-      - name: Build & push External API image
+      - name: Build & push image
         run: |
           IMAGE="${{ env.AR_REPO }}/external-api:${{ github.sha }}"
           IMAGE_LATEST="${{ env.AR_REPO }}/external-api:latest"
@@ -226,102 +47,27 @@ jobs:
             --tag "$IMAGE_LATEST" \
             --cache-from "$IMAGE_LATEST" \
             --build-arg BUILDKIT_INLINE_CACHE=1 \
-            External-API-Service
+            .
+          docker push "$IMAGE"
+          docker push "$IMAGE_LATEST"
         env:
           DOCKER_BUILDKIT: 1
 
-      - name: Push images
-        run: |
-          docker push "${{ env.AR_REPO }}/external-api:${{ github.sha }}"
-          docker push "${{ env.AR_REPO }}/external-api:latest"
-
       - name: Deploy to Cloud Run
         run: |
-          IMAGE="${{ env.AR_REPO }}/external-api:${{ github.sha }}"
           gcloud run deploy auditoria-external-api \
-            --image "$IMAGE" \
+            --image "${{ env.AR_REPO }}/external-api:${{ github.sha }}" \
             --region ${{ env.GCP_REGION }} \
             --project ${{ env.GCP_PROJECT_ID }} \
             --quiet
 
-  # ─────────────────────────────────────────────
-  # WORKER DEEPGRAM
-  # ─────────────────────────────────────────────
-  deploy-worker-deepgram:
-    name: Deploy Worker Deepgram
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: verify-ci
-    if: |
-      github.event_name == 'push' ||
-      inputs.service == 'all' ||
-      inputs.service == 'worker-deepgram'
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Configure Docker for Artifact Registry
-        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
-
-      - name: Build & push Worker Deepgram image
+      - name: Verify deployment
         run: |
-          IMAGE="${{ env.AR_REPO }}/worker-deepgram:${{ github.sha }}"
-          IMAGE_LATEST="${{ env.AR_REPO }}/worker-deepgram:latest"
-
-          docker build \
-            --tag "$IMAGE" \
-            --tag "$IMAGE_LATEST" \
-            --cache-from "$IMAGE_LATEST" \
-            --build-arg BUILDKIT_INLINE_CACHE=1 \
-            AuditorIA-App/Worker-Deepgram
-        env:
-          DOCKER_BUILDKIT: 1
-
-      - name: Push images
-        run: |
-          docker push "${{ env.AR_REPO }}/worker-deepgram:${{ github.sha }}"
-          docker push "${{ env.AR_REPO }}/worker-deepgram:latest"
-
-      - name: Deploy to Cloud Run
-        run: |
-          IMAGE="${{ env.AR_REPO }}/worker-deepgram:${{ github.sha }}"
-          gcloud run deploy auditoria-worker-deepgram \
-            --image "$IMAGE" \
+          URL=$(gcloud run services describe auditoria-external-api \
             --region ${{ env.GCP_REGION }} \
             --project ${{ env.GCP_PROJECT_ID }} \
-            --quiet
-
-  # ─────────────────────────────────────────────
-  # Notificación final de deploy
-  # ─────────────────────────────────────────────
-  notify:
-    name: Deploy summary
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    needs:
-      - deploy-backend
-      - deploy-frontend
-      - deploy-external-api
-      - deploy-worker-deepgram
-    if: always()
-    steps:
-      - name: Print deploy result
-        run: |
-          echo "## Deploy Summary"
-          echo "Commit: ${{ github.sha }}"
-          echo "Actor:  ${{ github.actor }}"
-          echo ""
-          echo "Backend:      ${{ needs.deploy-backend.result }}"
-          echo "Frontend:     ${{ needs.deploy-frontend.result }}"
-          echo "External API: ${{ needs.deploy-external-api.result }}"
-          echo "Worker DG:    ${{ needs.deploy-worker-deepgram.result }}"
+            --format='value(status.url)')
+          echo "External API URL: $URL"
+          curl --fail --silent --max-time 30 "$URL/health" || \
+          curl --fail --silent --max-time 30 "$URL/docs" || \
+          echo "Health check no disponible, verificar manualmente"
