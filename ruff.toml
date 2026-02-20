@@ -1,0 +1,38 @@
+# ruff.toml — configuración compartida para todos los servicios Python del monorepo.
+# ruff busca este archivo en el directorio actual y en los padres, por lo que
+# aplica a Backend, External-API-Service y Workers cuando se ejecuta desde su directorio.
+# Documentación: https://docs.astral.sh/ruff/configuration/
+
+target-version = "py310"
+line-length = 100
+
+[lint]
+select = [
+  "E",   # pycodestyle errors
+  "W",   # pycodestyle warnings
+  "F",   # pyflakes (imports no usados, variables no definidas, etc.)
+  "I",   # isort (orden de imports)
+  "N",   # pep8-naming
+  "UP",  # pyupgrade (modernización de sintaxis Python)
+  "B",   # flake8-bugbear (patrones comunes de bugs)
+  "C4",  # flake8-comprehensions (simplificación de list/dict/set comprehensions)
+  "SIM", # flake8-simplify
+]
+
+ignore = [
+  "E501",  # line too long — manejado por ruff format
+  "B008",  # do not perform function calls in default arguments (común en FastAPI Depends)
+  "N999",  # Invalid module name (algunos archivos usan kebab-case heredado)
+]
+
+# No reportar errores en archivos de migración ni en tests por convención
+[lint.per-file-ignores]
+"migrations/**" = ["E", "W", "F"]
+"tests/**"      = ["S101"]  # assert is OK in tests
+
+[format]
+# Compatible con Black
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"

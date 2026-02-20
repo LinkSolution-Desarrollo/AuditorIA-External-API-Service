@@ -1,0 +1,66 @@
+name: Feature Request
+description: Proponer una nueva funcionalidad o mejora
+title: "feat: "
+labels: ["enhancement"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Antes de abrir, buscá si ya existe un issue similar.
+
+  - type: dropdown
+    id: service
+    attributes:
+      label: Servicio / área relacionada
+      options:
+        - Frontend (Next.js)
+        - Backend (FastAPI)
+        - External API Service
+        - Workers (Deepgram / GPT / Whisper)
+        - Infraestructura / Deploy
+        - Documentación
+        - Otro
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problema que resuelve
+      description: ¿Qué limitación o fricción actual motiva esta feature?
+      placeholder: "Actualmente cuando quiero hacer X, tengo que hacer Y manualmente..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Solución propuesta
+      description: Describí cómo imaginás que debería funcionar.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativas consideradas
+      description: Otras formas de resolver el mismo problema.
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Prioridad estimada
+      options:
+        - Alta — bloquea flujo principal
+        - Media — mejora significativa
+        - Baja — nice to have
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Contexto adicional
+      description: Screenshots, mockups, links a referencias.

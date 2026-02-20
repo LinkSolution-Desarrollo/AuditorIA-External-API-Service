@@ -1,0 +1,80 @@
+name: Bug Report
+description: Reportar un comportamiento incorrecto o inesperado
+title: "fix: "
+labels: ["bug", "triage"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Gracias por reportar un bug. Completá los campos para ayudarnos a reproducirlo.
+
+  - type: dropdown
+    id: service
+    attributes:
+      label: Servicio afectado
+      options:
+        - Frontend (Next.js)
+        - Backend (FastAPI)
+        - External API Service
+        - Worker Deepgram
+        - Worker GPT
+        - Worker Whisper
+        - Infraestructura / Deploy
+        - Otro
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Descripción del bug
+      description: Describí claramente qué pasa y qué esperabas que pasara.
+      placeholder: "Al hacer X, ocurre Y en vez de Z..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Pasos para reproducir
+      description: Secuencia exacta para llegar al error.
+      placeholder: |
+        1. Ir a '...'
+        2. Hacer click en '...'
+        3. Ver el error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Comportamiento esperado
+      placeholder: "Debería..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Stacktrace
+      description: Pegá el error completo. Se formatea automáticamente como código.
+      render: shell
+
+  - type: input
+    id: version
+    attributes:
+      label: Versión / Branch
+      placeholder: "main, v1.2.3, commit abc1234"
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Entorno
+      options:
+        - Producción (GCP Cloud Run)
+        - Local (docker-compose)
+        - CI/CD
+    validations:
+      required: true

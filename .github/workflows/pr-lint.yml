@@ -1,0 +1,98 @@
+name: PR Checks
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  pull-requests: read
+
+jobs:
+  # ─────────────────────────────────────────────
+  # Valida que el título del PR siga Conventional Commits.
+  # Ejemplos válidos: feat: agregar login, fix(backend): corregir JWT, chore!: breaking change
+  # ─────────────────────────────────────────────
+  pr-title:
+    name: Conventional Commits title
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Tipos permitidos
+          types: |
+            feat
+            fix
+            chore
+            docs
+            style
+            refactor
+            perf
+            test
+            build
+            ci
+            revert
+          # Scopes opcionales (dejar vacío para permitir cualquiera)
+          # scopes: |
+          #   frontend
+          #   backend
+          #   workers
+          #   infra
+          requireScope: false
+          subjectPattern: ^.+$
+          subjectPatternError: |
+            El título del PR debe tener un subject descriptivo.
+            Ejemplo: "feat(backend): agregar endpoint de transcripción"
+
+  # ─────────────────────────────────────────────
+  # Detecta si el PR es demasiado grande (difícil de revisar).
+  # Límite sugerido: 800 líneas modificadas.
+  # ─────────────────────────────────────────────
+  pr-size:
+    name: PR size check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Check PR size
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ADDITIONS=$(gh pr view ${{ github.event.pull_request.number }} --json additions -q '.additions')
+          DELETIONS=$(gh pr view ${{ github.event.pull_request.number }} --json deletions -q '.deletions')
+          TOTAL=$((ADDITIONS + DELETIONS))
+          echo "PR size: +${ADDITIONS} -${DELETIONS} = ${TOTAL} lines changed"
+
+          if [ "$TOTAL" -gt 800 ]; then
+            echo "⚠️  WARNING: Este PR modifica ${TOTAL} líneas (límite recomendado: 800)."
+            echo "Considera dividirlo en PRs más pequeños para facilitar la revisión."
+            # No bloqueamos (exit 0), solo avisamos
+          else
+            echo "✅ Tamaño del PR dentro del límite (${TOTAL}/800 líneas)."
+          fi
+
+  # ─────────────────────────────────────────────
+  # Verifica que el PR tenga descripción (no esté vacío)
+  # ─────────────────────────────────────────────
+  pr-description:
+    name: PR has description
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR body
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if [ -z "$PR_BODY" ] || [ ${#PR_BODY} -lt 20 ]; then
+            echo "❌ El PR no tiene descripción o es demasiado corta."
+            echo "Por favor, agregá una descripción que explique qué cambia y por qué."
+            exit 1
+          fi
+          echo "✅ PR tiene descripción (${#PR_BODY} caracteres)."
