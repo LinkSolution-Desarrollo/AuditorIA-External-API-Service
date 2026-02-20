@@ -1,0 +1,46 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: auditoria-keycloak
+  labels:
+    cloud.googleapis.com/location: southamerica-west1
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "2"
+    spec:
+      serviceAccountName: auditoria-runner@test-cloud-01-463920.iam.gserviceaccount.com
+      containers:
+      - image: southamerica-west1-docker.pkg.dev/test-cloud-01-463920/auditoria-registry/keycloak:26.0.0
+        ports:
+        - containerPort: 8080
+        args:
+        - start-dev
+        env:
+        - name: KC_DB
+          value: postgres
+        - name: KC_DB_URL
+          value: jdbc:postgresql://34.176.28.4:5432/keycloak
+        - name: KC_DB_USERNAME
+          value: auditoria
+        - name: KC_DB_PASSWORD
+          value: PLACEHOLDER_KC_DB_PASSWORD
+        - name: KEYCLOAK_ADMIN
+          value: admin
+        - name: KEYCLOAK_ADMIN_PASSWORD
+          value: PLACEHOLDER_KEYCLOAK_ADMIN_PASSWORD
+        - name: KC_HTTP_ENABLED
+          value: "true"
+        - name: KC_PROXY_HEADERS
+          value: xforwarded
+        - name: KC_HOSTNAME
+          value: https://auditoria-keycloak-825136167029.southamerica-west1.run.app
+        resources:
+          limits:
+            memory: 1Gi
+            cpu: "1"
+  traffic:
+  - percent: 100
+    latestRevision: true

@@ -1,0 +1,21 @@
+# Archivos y directorios a ignorar en gcloud builds submit
+.git
+.gitignore
+.env
+*.env.local
+node_modules
+__pycache__
+*.pyc
+*.pyo
+.DS_Store
+tests/
+result.xml
+result_v2.xml
+test_output.txt
+*.log
+gcp-deploy/
+.claude/
+AuditorIA-App/Worker-Whisper/
+AuditorIA-App/Worker-GPT/
+grafana/
+pgadmin/

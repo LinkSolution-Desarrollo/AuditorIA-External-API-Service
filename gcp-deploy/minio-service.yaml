@@ -1,0 +1,45 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: auditoria-minio
+  labels:
+    cloud.googleapis.com/location: southamerica-west1
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "1"
+        run.googleapis.com/cpu-throttling: "false"
+    spec:
+      serviceAccountName: auditoria-runner@test-cloud-01-463920.iam.gserviceaccount.com
+      containers:
+      - image: southamerica-west1-docker.pkg.dev/test-cloud-01-463920/auditoria-registry/minio:latest
+        ports:
+        - containerPort: 9000
+        args:
+        - server
+        - /data
+        - --console-address
+        - :9001
+        env:
+        - name: MINIO_ROOT_USER
+          value: PLACEHOLDER_MINIO_ROOT_USER
+        - name: MINIO_ROOT_PASSWORD
+          value: PLACEHOLDER_MINIO_ROOT_PASSWORD
+        resources:
+          limits:
+            memory: 512Mi
+            cpu: "1"
+        volumeMounts:
+        - name: minio-data
+          mountPath: /data
+      volumes:
+      - name: minio-data
+        csi:
+          driver: gcsfuse.run.googleapis.com
+          volumeAttributes:
+            bucketName: test-cloud-01-463920-minio-data
+  traffic:
+  - percent: 100
+    latestRevision: true

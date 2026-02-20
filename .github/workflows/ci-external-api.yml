@@ -1,0 +1,109 @@
+name: CI — External API Service
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "External-API-Service/**"
+      - ".github/workflows/ci-external-api.yml"
+  pull_request:
+    paths:
+      - "External-API-Service/**"
+      - ".github/workflows/ci-external-api.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+defaults:
+  run:
+    working-directory: External-API-Service
+
+jobs:
+  lint:
+    name: Lint & Format (ruff)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: ruff check
+        run: ruff check .
+
+      - name: ruff format check
+        run: ruff format --check .
+
+  test:
+    name: Pytest
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test_external_api
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: "pip"
+          cache-dependency-path: External-API-Service/requirements.txt
+
+      - name: Install dependencies
+        # python-magic-bin es solo para Windows; en Linux se usa python-magic con libmagic
+        run: |
+          pip install -r requirements.txt
+          pip install python-magic pytest-cov
+
+      - name: Run tests with coverage
+        run: |
+          pytest tests/ -v --tb=short --no-header -p no:warnings \
+            --cov=app \
+            --cov-report=xml \
+            --cov-report=term-missing:skip-covered
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test_external_api
+          SECRET_KEY: ci-secret-key-placeholder
+          MINIO_ENDPOINT: localhost:9000
+          MINIO_ACCESS_KEY: minioadmin
+          MINIO_SECRET_KEY: minioadmin
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          echo "## External API Coverage" >> $GITHUB_STEP_SUMMARY
+          python -m coverage report --format=markdown 2>/dev/null >> $GITHUB_STEP_SUMMARY || \
+            echo "_Coverage report no disponible_" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: external-api-coverage-xml
+          path: External-API-Service/coverage.xml
+          retention-days: 7
