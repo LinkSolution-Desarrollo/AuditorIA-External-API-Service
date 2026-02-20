@@ -1,0 +1,30 @@
+# .hadolint.yaml — configuración para el linter de Dockerfiles
+# Documentación: https://github.com/hadolint/hadolint#configure
+
+# Nivel mínimo para fallar el check (error > warning > info > style)
+failure-threshold: warning
+
+ignore:
+  # DL3008: Pin versions in apt get install (ej: ffmpeg=7:4.4.2-0ubuntu0.22.04.1)
+  # → Ignorado porque pinear versiones de apt en Dockerfiles de Python es poco práctico
+  #   y los cambios de versión de sistema operativo son raros en nuestra imagen base.
+  - DL3008
+
+  # DL3013: Pin versions in pip install
+  # → Ignorado porque usamos requirements.txt con pip install -r (que debería tener pins).
+  #   La regla aplica a `pip install paquete` inline, no a -r requirements.txt.
+  - DL3013
+
+  # DL3016: Pin versions in npm install
+  # → Ignorado porque usamos pnpm con pnpm-lock.yaml que garantiza reproducibilidad.
+  - DL3016
+
+  # SC2046: Quote this to prevent word splitting (shell quoting en RUN commands)
+  # → A veces genera falsos positivos en patrones válidos de shell scripting.
+  - SC2046
+
+# Trusts todas las imágenes de python: y node: como base segura
+trustedRegistries:
+  - docker.io
+  - ghcr.io
+  - registry.access.redhat.com

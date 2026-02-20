@@ -74,7 +74,10 @@ jobs:
         working-directory: AuditorIA-App/Worker-Deepgram
 
       - name: Run tests
-        run: pytest tests/ -v --tb=short --no-header -p no:warnings --passWithNoTests
+        # Exit code 5 = no tests collected; es OK para workers pequeños
+        run: |
+          pytest tests/ -v --tb=short --no-header -p no:warnings
+          EXIT=$?; [ $EXIT -eq 0 ] || [ $EXIT -eq 5 ] || exit $EXIT
         working-directory: AuditorIA-App/Worker-Deepgram
         env:
           DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}

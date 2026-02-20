@@ -1,0 +1,178 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  # ─────────────────────────────────────────────
+  # 1. Hadolint — linting de Dockerfiles
+  #    Detecta: capas innecesarias, apt sin limpieza, pip sin --no-cache-dir, etc.
+  # ─────────────────────────────────────────────
+  hadolint:
+    name: Hadolint (${{ matrix.dockerfile }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        dockerfile:
+          - AuditorIA-App/Backend/Dockerfile
+          - AuditorIA-App/Frontend/Dockerfile
+          - AuditorIA-App/Worker-Deepgram/Dockerfile
+          - AuditorIA-App/Worker-GPT/Dockerfile
+          - AuditorIA-App/Worker-Whisper/Dockerfile
+          - External-API-Service/Dockerfile
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Lint ${{ matrix.dockerfile }}
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: ${{ matrix.dockerfile }}
+          # Solo falla en errores reales; warnings se muestran como anotaciones
+          failure-threshold: error
+          # Outputs anotaciones en la PR directamente
+          format: sarif
+          output-file: hadolint-${{ strategy.job-index }}.sarif
+          no-fail: true
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: hadolint-${{ strategy.job-index }}.sarif
+          category: hadolint-${{ matrix.dockerfile }}
+
+  # ─────────────────────────────────────────────
+  # 2. actionlint — linting de los propios workflows
+  #    Detecta: expresiones inválidas, steps mal referenciados, permisos incorrectos
+  # ─────────────────────────────────────────────
+  actionlint:
+    name: actionlint (workflows)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run actionlint
+        uses: rhysd/actionlint@v1
+        with:
+          # Muestra errores en color y como anotaciones en la PR
+          flags: "-color"
+
+  # ─────────────────────────────────────────────
+  # 3. Docker Compose — validación de sintaxis
+  #    Detecta servicios mal configurados, imágenes faltantes, etc.
+  # ─────────────────────────────────────────────
+  docker-compose-validate:
+    name: Docker Compose config
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Validate root docker-compose.yml
+        run: docker compose -f docker-compose.yml config --quiet
+
+      - name: Validate External-API-Service docker-compose.yml
+        run: docker compose -f External-API-Service/docker-compose.yml config --quiet
+
+  # ─────────────────────────────────────────────
+  # 4. Bandit — SAST para Python
+  #    Detecta: SQL injection, hardcoded passwords, uso inseguro de subprocess, etc.
+  # ─────────────────────────────────────────────
+  bandit:
+    name: Bandit (${{ matrix.service.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - name: backend
+            path: AuditorIA-App/Backend
+          - name: external-api
+            path: External-API-Service
+          - name: worker-deepgram
+            path: AuditorIA-App/Worker-Deepgram
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install bandit
+        run: pip install bandit[sarif]
+
+      - name: Run bandit
+        # -ll: solo medium y high severity; -ii: solo medium y high confidence
+        # Evita ruido de false positives de baja severidad
+        run: |
+          bandit -r app/ -ll -ii \
+            --format sarif \
+            --output bandit-report.sarif \
+          || true
+        working-directory: ${{ matrix.service.path }}
+
+      - name: Upload SARIF to Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: ${{ matrix.service.path }}/bandit-report.sarif
+          category: bandit-${{ matrix.service.name }}
+
+  # ─────────────────────────────────────────────
+  # 5. pip check — valida compatibilidad de dependencias instaladas
+  #    Detecta conflictos de versiones entre paquetes
+  # ─────────────────────────────────────────────
+  pip-check:
+    name: pip check (${{ matrix.service.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - name: backend
+            path: AuditorIA-App/Backend
+          - name: external-api
+            path: External-API-Service
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: "pip"
+          cache-dependency-path: ${{ matrix.service.path }}/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+        working-directory: ${{ matrix.service.path }}
+
+      - name: pip check (dependency conflicts)
+        run: pip check
+        working-directory: ${{ matrix.service.path }}

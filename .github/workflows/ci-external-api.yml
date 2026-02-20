@@ -77,10 +77,14 @@ jobs:
         # python-magic-bin es solo para Windows; en Linux se usa python-magic con libmagic
         run: |
           pip install -r requirements.txt
-          pip install python-magic
+          pip install python-magic pytest-cov
 
-      - name: Run tests
-        run: pytest tests/ -v --tb=short --no-header -p no:warnings
+      - name: Run tests with coverage
+        run: |
+          pytest tests/ -v --tb=short --no-header -p no:warnings \
+            --cov=app \
+            --cov-report=xml \
+            --cov-report=term-missing:skip-covered
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test_external_api
           SECRET_KEY: ci-secret-key-placeholder
@@ -88,3 +92,18 @@ jobs:
           MINIO_ACCESS_KEY: minioadmin
           MINIO_SECRET_KEY: minioadmin
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          echo "## External API Coverage" >> $GITHUB_STEP_SUMMARY
+          python -m coverage report --format=markdown 2>/dev/null >> $GITHUB_STEP_SUMMARY || \
+            echo "_Coverage report no disponible_" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: external-api-coverage-xml
+          path: External-API-Service/coverage.xml
+          retention-days: 7

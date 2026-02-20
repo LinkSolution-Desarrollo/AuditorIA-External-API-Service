@@ -25,6 +25,7 @@ jobs:
   secrets-scan:
     name: Gitleaks (secrets scan)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,6 +42,7 @@ jobs:
   pip-audit:
     name: pip-audit (${{ matrix.service.name }})
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -88,6 +90,7 @@ jobs:
   pnpm-audit:
     name: pnpm audit (Frontend)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -118,6 +121,7 @@ jobs:
   trivy-fs:
     name: Trivy filesystem scan
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -147,6 +151,7 @@ jobs:
   trivy-images:
     name: Trivy image (${{ matrix.service.name }})
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # Solo en push a main (no en PRs ni schedule, para no ralentizar la revisión)
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     strategy:
@@ -189,6 +194,8 @@ jobs:
   codeql:
     name: CodeQL (${{ matrix.language }})
     runs-on: ubuntu-latest
+    # CodeQL puede tomar hasta 60 min en repos grandes
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:

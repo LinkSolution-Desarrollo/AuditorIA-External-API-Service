@@ -74,10 +74,14 @@ jobs:
           cache-dependency-path: AuditorIA-App/Backend/requirements.txt
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt pytest-cov
 
-      - name: Run tests
-        run: pytest tests/ -v --tb=short --no-header -p no:warnings
+      - name: Run tests with coverage
+        run: |
+          pytest tests/ -v --tb=short --no-header -p no:warnings \
+            --cov=app \
+            --cov-report=xml \
+            --cov-report=term-missing:skip-covered
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test_auditoria
           SECRET_KEY: ci-secret-key-placeholder
@@ -87,3 +91,18 @@ jobs:
           MINIO_SECRET_KEY: minioadmin
           # Agregar el resto de secrets como GitHub Secrets del repositorio
           # y referenciarlos acá como: ${{ secrets.MI_SECRET }}
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          echo "## Backend Coverage" >> $GITHUB_STEP_SUMMARY
+          python -m coverage report --format=markdown 2>/dev/null >> $GITHUB_STEP_SUMMARY || \
+            echo "_Coverage report no disponible_" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-coverage-xml
+          path: AuditorIA-App/Backend/coverage.xml
+          retention-days: 7

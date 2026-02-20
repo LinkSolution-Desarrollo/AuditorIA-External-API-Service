@@ -131,15 +131,23 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Variables de entorno ficticias para validar que el build compila correctamente.
-      # Agregar las reales como GitHub Secrets si el build requiere valores concretos.
+      # Variables de entorno para validar que el build compila correctamente.
+      # Los valores NEXT_PUBLIC_* se embeben en el bundle en build time.
+      # Las reales de producción se pasan via GitHub Secrets en cd-gcp.yml.
       - name: Build
         run: pnpm build
         env:
           NEXT_TELEMETRY_DISABLED: 1
-          NEXT_PUBLIC_API_URL: http://localhost:8000
+          # Keycloak
           NEXT_PUBLIC_KEYCLOAK_URL: http://localhost:8080
           NEXT_PUBLIC_KEYCLOAK_REALM: auditoria
           NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: Auditoria
-          NEXTAUTH_SECRET: ci-secret-placeholder
-          NEXTAUTH_URL: http://localhost:3000
+          # API
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+          NEXT_PUBLIC_SFTP_SERVICE_URL: http://localhost:8002
+          # PostHog (analytics — placeholder en CI)
+          NEXT_PUBLIC_POSTHOG_KEY: phc_placeholder
+          NEXT_PUBLIC_POSTHOG_HOST: https://app.posthog.com
+          # Feature flags
+          NEXT_PUBLIC_HIDE_BRANDING: false
+          NEXT_PUBLIC_VIDEO_BACKGROUND_URL: ""
