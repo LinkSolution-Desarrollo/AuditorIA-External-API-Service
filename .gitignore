@@ -4,3 +4,10 @@ __pycache__/
 venv/
 .vscode/
 gcp-deploy/.generated.env
+
+# Claude Code local settings (no commitear)
+.claude/
+
+# Subdirectorios de otros repos (no son submodules de este repo)
+AuditorIA-App/
+External-API-Service/
