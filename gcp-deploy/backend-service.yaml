@@ -21,7 +21,7 @@ spec:
         - containerPort: 8000
         env:
         - name: DB_URL
-          value: postgresql://auditoria:password@/auditoria_db?host=/cloudsql/test-cloud-01-463920:southamerica-west1:auditoria-postgres
+          value: postgresql://auditoria:PLACEHOLDER_DB_PASSWORD@/auditoria_db?host=/cloudsql/test-cloud-01-463920:southamerica-west1:auditoria-postgres
         - name: KEYCLOAK_SERVER_URL
           value: KEYCLOAK_URL_PLACEHOLDER
         - name: KEYCLOAK_REALM
@@ -35,13 +35,13 @@ spec:
         - name: S3_ENDPOINT
           value: https://auditoria-minio-825136167029.southamerica-west1.run.app
         - name: S3_ACCESS_KEY
-          value: minioadmin
+          value: PLACEHOLDER_S3_ACCESS_KEY
         - name: S3_SECRET_KEY
-          value: minioadmin
+          value: PLACEHOLDER_S3_SECRET_KEY
         - name: MINIO_ACCESS_KEY
-          value: minioadmin
+          value: PLACEHOLDER_MINIO_ACCESS_KEY
         - name: MINIO_SECRET_ACCESS_KEY
-          value: minioadmin
+          value: PLACEHOLDER_MINIO_SECRET_KEY
         - name: OPENAI_API_KEY
           value: PLACEHOLDER_OPENAI_API_KEY
         - name: OPENAI_MODEL

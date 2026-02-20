@@ -25,9 +25,9 @@ spec:
         - name: S3_ENDPOINT
           value: https://auditoria-minio-825136167029.southamerica-west1.run.app
         - name: S3_ACCESS_KEY
-          value: minioadmin
+          value: PLACEHOLDER_S3_ACCESS_KEY
         - name: S3_SECRET_KEY
-          value: minioadmin
+          value: PLACEHOLDER_S3_SECRET_KEY
         - name: AUDIO_BUCKET_NAME
           value: audios
         - name: DEEPGRAM_API_KEY

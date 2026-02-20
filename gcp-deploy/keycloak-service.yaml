@@ -26,11 +26,11 @@ spec:
         - name: KC_DB_USERNAME
           value: auditoria
         - name: KC_DB_PASSWORD
-          value: password
+          value: PLACEHOLDER_KC_DB_PASSWORD
         - name: KEYCLOAK_ADMIN
           value: admin
         - name: KEYCLOAK_ADMIN_PASSWORD
-          value: admin
+          value: PLACEHOLDER_KEYCLOAK_ADMIN_PASSWORD
         - name: KC_HTTP_ENABLED
           value: "true"
         - name: KC_PROXY_HEADERS
