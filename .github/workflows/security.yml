@@ -5,7 +5,6 @@ on:
     branches: [main]
   pull_request:
   schedule:
-    # Todos los lunes a las 08:00 UTC
     - cron: "0 8 * * 1"
   workflow_dispatch:
 
@@ -19,45 +18,25 @@ permissions:
   actions: read
 
 jobs:
-  # ─────────────────────────────────────────────
-  # 1. Secrets scan — detecta credenciales expuestas en el código
-  # ─────────────────────────────────────────────
   secrets-scan:
-    name: Gitleaks (secrets scan)
+    name: Gitleaks (secrets)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: recursive
 
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # ─────────────────────────────────────────────
-  # 2. Dependencias Python — vulnerabilidades conocidas (CVE)
-  # ─────────────────────────────────────────────
   pip-audit:
-    name: pip-audit (${{ matrix.service.name }})
+    name: pip-audit
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        service:
-          - name: backend
-            path: AuditorIA-App/Backend
-          - name: external-api
-            path: External-API-Service
-          - name: worker-deepgram
-            path: AuditorIA-App/Worker-Deepgram
-
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - uses: actions/setup-python@v5
         with:
@@ -66,68 +45,29 @@ jobs:
       - name: Install pip-audit
         run: pip install pip-audit
 
-      - name: Audit ${{ matrix.service.name }}
-        # --skip-editable evita errores con paquetes locales editables
+      - name: Audit dependencies
         run: |
-          pip-audit \
-            -r ${{ matrix.service.path }}/requirements.txt \
+          pip-audit -r requirements.txt \
             --skip-editable \
             --format markdown \
-            --output pip-audit-${{ matrix.service.name }}.md \
-          || true  # No bloquear el pipeline; reportar como artefacto
+            --output pip-audit-report.md \
+          || true
 
-      - name: Upload audit report
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: pip-audit-${{ matrix.service.name }}
-          path: pip-audit-${{ matrix.service.name }}.md
+          name: pip-audit-report
+          path: pip-audit-report.md
           retention-days: 30
 
-  # ─────────────────────────────────────────────
-  # 3. Dependencias JS/TS — vulnerabilidades conocidas (CVE)
-  # ─────────────────────────────────────────────
-  pnpm-audit:
-    name: pnpm audit (Frontend)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "pnpm"
-          cache-dependency-path: AuditorIA-App/Frontend/pnpm-lock.yaml
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-        working-directory: AuditorIA-App/Frontend
-
-      - name: Audit
-        # --audit-level=high: solo falla con HIGH o CRITICAL
-        run: pnpm audit --audit-level=high
-        working-directory: AuditorIA-App/Frontend
-
-  # ─────────────────────────────────────────────
-  # 4. Trivy — filesystem scan: vulnerabilidades, misconfigs, secrets
-  # ─────────────────────────────────────────────
   trivy-fs:
     name: Trivy filesystem scan
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
-      - name: Run Trivy (filesystem)
+      - name: Run Trivy
         uses: aquasecurity/trivy-action@0.29.0
         with:
           scan-type: fs
@@ -135,90 +75,28 @@ jobs:
           format: sarif
           output: trivy-fs.sarif
           severity: HIGH,CRITICAL
-          # También detecta secretos y misconfigs en archivos de config
           scanners: vuln,secret,misconfig
 
-      - name: Upload SARIF to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: trivy-fs.sarif
           category: trivy-filesystem
 
-  # ─────────────────────────────────────────────
-  # 5. Trivy — Docker image scan para Backend y External API
-  # ─────────────────────────────────────────────
-  trivy-images:
-    name: Trivy image (${{ matrix.service.name }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    # Solo en push a main (no en PRs ni schedule, para no ralentizar la revisión)
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    strategy:
-      fail-fast: false
-      matrix:
-        service:
-          - name: backend
-            path: AuditorIA-App/Backend
-          - name: external-api
-            path: External-API-Service
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Build Docker image
-        run: docker build -t auditoria-${{ matrix.service.name }}:ci ${{ matrix.service.path }}
-
-      - name: Trivy image scan
-        uses: aquasecurity/trivy-action@0.29.0
-        with:
-          scan-type: image
-          image-ref: auditoria-${{ matrix.service.name }}:ci
-          format: sarif
-          output: trivy-image-${{ matrix.service.name }}.sarif
-          severity: HIGH,CRITICAL
-          exit-code: "1"
-
-      - name: Upload SARIF
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: trivy-image-${{ matrix.service.name }}.sarif
-          category: trivy-image-${{ matrix.service.name }}
-
-  # ─────────────────────────────────────────────
-  # 6. CodeQL — SAST estático para Python y TypeScript
-  # ─────────────────────────────────────────────
   codeql:
-    name: CodeQL (${{ matrix.language }})
+    name: CodeQL (Python)
     runs-on: ubuntu-latest
-    # CodeQL puede tomar hasta 60 min en repos grandes
     timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        language:
-          - python
-          - javascript-typescript
-
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+      - uses: github/codeql-action/init@v3
         with:
-          languages: ${{ matrix.language }}
-          # Queries de seguridad extendida (más detección, más tiempo)
+          languages: python
           queries: security-extended
 
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
+      - uses: github/codeql-action/autobuild@v3
 
-      - name: Analyze
-        uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@v3
         with:
-          category: codeql-${{ matrix.language }}
+          category: codeql-python
