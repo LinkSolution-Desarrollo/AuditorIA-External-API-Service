@@ -153,22 +153,6 @@ async def upload_file(
             "api_key_id": api_key.id,  # Store API key ID for filtering
         }
 
-        # Best-effort audio duration (seconds)
-        audio_duration = None
-        try:
-            audio_info = MutagenFile(tmp_path)
-            if audio_info is not None and getattr(audio_info, "info", None) is not None:
-                audio_duration = getattr(audio_info.info, "length", None)
-                if audio_duration:
-                    logger.info(f"Audio duration calculated: {audio_duration}s for {file.filename}")
-                else:
-                    logger.warning(f"Audio duration not available in file info for {file.filename}")
-            else:
-                logger.warning(f"Could not read audio file with mutagen: {file.filename}")
-        except Exception as e:
-            logger.error(f"Error calculating audio duration for {file.filename}: {e}")
-            audio_duration = None
-
         # Clean up temp file
         os.unlink(tmp_path)
 
