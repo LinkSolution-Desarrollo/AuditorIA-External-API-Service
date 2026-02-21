@@ -113,16 +113,6 @@ services:
     env_file:
       - .env
     environment:
-<<<<<<< HEAD
-      # Override localhost with host.docker.internal for container-to-host communication
-      # Users should ensure their .env uses these or they are set here if defaults are localhost
-      - DB_HOST=host.docker.internal
-      - DB_URL=postgresql://root:password@host.docker.internal:5432/auditoria_db
-      - MINIO_ENDPOINT=host.docker.internal:9000
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    restart: unless-stopped
-=======
       DB_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       KEYCLOAK_SERVER_URL: ${KEYCLOAK_SERVER_URL}
       MINIO_URL: ${MINIO_URL}
@@ -134,7 +124,6 @@ services:
         condition: service_started
       keycloak:
         condition: service_started
->>>>>>> abe07123918c8dff9e98cfdccc7d1d160f56b957
     networks:
       default:
         aliases:
