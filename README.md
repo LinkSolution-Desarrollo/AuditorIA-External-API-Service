@@ -2,6 +2,10 @@
 
 Standalone service for external users to upload audio files to the AuditorIA platform.
 
+## Repository Evolution Video
+
+- [build-gource.mp4](./build-gource.mp4): Gource render of this repository history at `1280x720` (`--seconds-per-day 0.05`).
+
 ## Features
 
 - **Secure Uploads**: Authenticated via Global API Keys managed in the main application.
@@ -78,3 +82,4 @@ curl -X POST "http://localhost:8001/webhook/anura/" \
     "accounttags": "campaign_1"
   }'
 ```
+
