@@ -7,6 +7,7 @@ on:
       - "app/**"
       - "requirements.txt"
       - "Dockerfile"
+      - ".github/workflows/cd-gcp.yml"
   workflow_dispatch:
 
 concurrency:
@@ -16,7 +17,7 @@ concurrency:
 env:
   GCP_PROJECT_ID: test-cloud-01-463920
   GCP_REGION: southamerica-west1
-  AR_REPO: southamerica-west1-docker.pkg.dev/test-cloud-01-463920/auditoria
+  AR_REPO: southamerica-west1-docker.pkg.dev/test-cloud-01-463920/auditoria-registry
 
 jobs:
   deploy:
@@ -25,6 +26,13 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+
+      - name: Validate required secrets
+        run: |
+          if [ -z "${{ secrets.GCP_SA_KEY }}" ]; then
+            echo "Missing required secret: GCP_SA_KEY"
+            exit 1
+          fi
 
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
