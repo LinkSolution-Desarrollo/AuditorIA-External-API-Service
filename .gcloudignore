@@ -1,8 +1,11 @@
 # Archivos y directorios a ignorar en gcloud builds submit
+#!include:.gitignore
 .git
 .gitignore
 .env
 *.env.local
+*.mp4
+*.ppm
 node_modules
 __pycache__
 *.pyc

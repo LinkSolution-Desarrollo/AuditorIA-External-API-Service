@@ -57,3 +57,8 @@ if settings.DEBUG:
 @limiter.limit("5/minute")
 def read_root(request: Request):
     return {"message": f"{settings.APP_NAME} is running."}
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}

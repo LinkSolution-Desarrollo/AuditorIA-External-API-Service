@@ -12,14 +12,22 @@ load_dotenv()
 # Create engine and session
 db_url = os.getenv("DB_URL")
 
-engine = create_engine(
-    db_url,
-    connect_args={"options": "-csearch_path=public"}
-)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+engine = None
+SessionLocal = None
+if db_url:
+    engine = create_engine(
+        db_url,
+        connect_args={"options": "-csearch_path=public"}
+    )
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 def get_db():
+    if SessionLocal is None:
+        raise HTTPException(
+            status_code=500,
+            detail="Database is not configured. Missing DB_URL environment variable."
+        )
     db = SessionLocal()
     try:
         yield db
