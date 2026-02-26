@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi_mcp import FastApiMCP
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -62,3 +63,8 @@ def read_root(request: Request):
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+# MCP server - expone todos los endpoints como herramientas MCP en /mcp
+mcp = FastApiMCP(app)
+mcp.mount()
