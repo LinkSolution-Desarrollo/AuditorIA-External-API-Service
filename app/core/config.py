@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     ALLOWED_EXTENSIONS: set = {".mp3", ".wav", ".ogg", ".m4a", ".flac", ".aac"}
     CORS_ORIGINS: list[str] = ["*"]
 
+    # OAuth / JWT
+    JWT_SECRET_KEY: str = "change-me-in-production"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRE_MINUTES: int = 60
+    OAUTH_ISSUER: str = "https://api.auditoria.app"
+
     # OpenAI
     OPENAI_API_KEY: Optional[str] = None
 

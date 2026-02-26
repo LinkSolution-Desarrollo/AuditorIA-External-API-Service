@@ -67,6 +67,7 @@ jobs:
             --image "${{ env.AR_REPO }}/external-api:${{ github.sha }}" \
             --region ${{ env.GCP_REGION }} \
             --project ${{ env.GCP_PROJECT_ID }} \
+            --update-env-vars "JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}" \
             --quiet
 
       - name: Verify deployment

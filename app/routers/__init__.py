@@ -1,3 +1,4 @@
+from .oauth import router as oauth_router
 from .upload import router as upload_router
 from .tasks import router as tasks_router
 from .chat import router as chat_router

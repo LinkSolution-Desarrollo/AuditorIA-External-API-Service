@@ -6,6 +6,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from app.routers import (
+    oauth_router,
     upload_router, tasks_router, chat_router, campaigns_router,
     webhooks_router, anura_helpers_router, test_utils_router,
     tags_router, speaker_analysis_router, agent_identification_router,
@@ -38,6 +39,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# OAuth 2.0 endpoints — sin auth dependency
+app.include_router(oauth_router)
 
 app.include_router(upload_router)
 app.include_router(tasks_router)

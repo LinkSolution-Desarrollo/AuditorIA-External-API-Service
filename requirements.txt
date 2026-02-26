@@ -17,6 +17,8 @@ python-magic; platform_system != 'Windows'
 langchain-openai
 langchain-core
 openai
+# OAuth / JWT
+python-jose[cryptography]
 # Testing
 pytest
 httpx
