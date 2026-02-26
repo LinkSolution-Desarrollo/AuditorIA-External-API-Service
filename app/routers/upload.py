@@ -10,6 +10,7 @@ from app.middleware.auth import get_api_key, ApiKeyData
 from app.core.validation import validate_file
 from app.core.audio import get_audio_duration
 from app.core.config import get_settings
+import base64
 import os
 import tempfile
 import shutil
@@ -40,12 +41,20 @@ class UploadFromUrlRequest(BaseModel):
     model: str = "nova-3"
 
 
+class UploadFromBase64Request(BaseModel):
+    audio_base64: str
+    file_name: str
+    campaign_id: int
+    username: str
+    operator_id: int
+    language: str = "es"
+    model: str = "nova-3"
+
+
 @router.post(
     "",
-    summary="Upload audio file for transcription",
-    description="Uploads a binary audio file (mp3, wav, ogg, m4a, flac, aac) to start a transcription task. "
-                "The file is stored in S3 and a task is queued for processing. "
-                "NOTE: MCP clients and AI sandboxes cannot send binary files — use POST /upload/from-url instead.",
+    include_in_schema=False,  # Oculto del schema OpenAPI — fastapi-mcp no puede proxiar UploadFile.
+                               # Usar /upload/from-url o /upload/from-base64 desde MCP/AI agents.
 )
 @limiter.limit("10/minute")
 async def upload_file(
@@ -363,6 +372,152 @@ async def upload_from_url(
             "task_id": new_task.uuid,
             "status": "queued",
             "message": "File downloaded and queued successfully",
+            "file_name": file_name,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+
+
+@router.post(
+    "/from-base64",
+    operation_id="upload_audio_from_base64",
+    summary="Upload audio encoded in base64 for transcription",
+    description=(
+        "Accepts a base64-encoded audio file in the JSON body and queues it for transcription. "
+        "This is the recommended upload method for MCP clients and AI agents (ChatGPT, Claude, etc.) "
+        "that have the audio file in memory but cannot send binary multipart data. "
+        "Supported formats: mp3, wav, ogg, m4a, flac, aac. Max decoded size: 50MB. "
+        "The file_name field must include the correct extension (e.g. 'recording.mp3')."
+    ),
+)
+@limiter.limit("10/minute")
+async def upload_from_base64(
+    request: Request,
+    body: UploadFromBase64Request,
+    db: Session = Depends(get_db),
+    api_key: ApiKeyData = Depends(get_api_key),
+):
+    settings = get_settings()
+
+    # Validate campaign
+    campaign = db.query(Campaign).filter(Campaign.campaign_id == body.campaign_id).first()
+    if not campaign:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Campaign with ID {body.campaign_id} not found."
+        )
+
+    # Decode base64
+    try:
+        audio_bytes = base64.b64decode(body.audio_base64, validate=True)
+    except Exception:
+        raise HTTPException(status_code=422, detail="Invalid base64 content in audio_base64.")
+
+    if len(audio_bytes) == 0:
+        raise HTTPException(status_code=400, detail="Decoded audio content is empty.")
+
+    if len(audio_bytes) > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Decoded file too large. Max size is {settings.MAX_UPLOAD_SIZE_MB}MB."
+        )
+
+    # Validate extension
+    file_name = body.file_name
+    ext = os.path.splitext(file_name)[1].lower()
+    if ext not in settings.ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unsupported file extension '{ext}'. Allowed: {sorted(settings.ALLOWED_EXTENSIONS)}"
+        )
+
+    file_uuid = str(uuid.uuid4())
+    bucket_name = settings.S3_BUCKET
+
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+            tmp.write(audio_bytes)
+            tmp_path = tmp.name
+
+        audio_duration = get_audio_duration(tmp_path)
+        object_name = f"{body.username}/{file_name}"
+
+        if check_file_exists_in_s3(bucket_name, object_name):
+            os.unlink(tmp_path)
+            raise HTTPException(
+                status_code=409,
+                detail=f"Conflict: file '{file_name}' already uploaded by user '{body.username}'."
+            )
+
+        content_type_map = {
+            ".mp3": "audio/mpeg", ".wav": "audio/wav", ".ogg": "audio/ogg",
+            ".m4a": "audio/mp4", ".flac": "audio/flac", ".aac": "audio/aac",
+        }
+        upload_success = upload_fileobj_to_s3(
+            open(tmp_path, "rb"), bucket_name, object_name,
+            content_type=content_type_map.get(ext, "audio/mpeg")
+        )
+        os.unlink(tmp_path)
+
+        if not upload_success:
+            raise HTTPException(status_code=500, detail="Failed to upload file to storage.")
+
+        task_params = {
+            "language": body.language,
+            "task": "transcribe",
+            "model": body.model,
+            "device": "deepgram",
+            "device_index": 0,
+            "threads": None,
+            "batch_size": None,
+            "compute_type": None,
+            "align_model": None,
+            "interpolate_method": None,
+            "return_char_alignments": False,
+            "asr_options": {},
+            "vad_options": {},
+            "min_speakers": None,
+            "max_speakers": None,
+            "s3_path": object_name,
+            "username": body.username,
+            "api_key_id": api_key.id,
+        }
+
+        new_task = Task(
+            uuid=file_uuid,
+            file_name=file_name,
+            url=object_name,
+            status="pending",
+            task_type="full_process",
+            task_params=task_params,
+            language=body.language,
+            audio_duration=audio_duration,
+        )
+        db.add(new_task)
+
+        new_call_log = CallLog(
+            file_name=file_name,
+            date=datetime.utcnow(),
+            campaign_id=body.campaign_id,
+            call_id=file_uuid,
+            operator_id=body.operator_id,
+            upload_by=body.username,
+            url=object_name,
+            log=f"Uploaded via External API from base64 (Task UUID: {file_uuid})",
+            sectot=audio_duration,
+        )
+        db.add(new_call_log)
+
+        db.commit()
+        db.refresh(new_task)
+
+        return {
+            "task_id": new_task.uuid,
+            "status": "queued",
+            "message": "Audio decoded and queued successfully",
             "file_name": file_name,
         }
 

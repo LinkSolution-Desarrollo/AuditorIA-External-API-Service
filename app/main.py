@@ -70,16 +70,14 @@ def health():
     return {"status": "ok"}
 
 
-# MCP server - expone todos los endpoints como herramientas MCP en /mcp
-# Auth: requiere Bearer JWT (via OAuth) o X-API-Key para acceder al endpoint /mcp.
-# El header authorization se forwardea automáticamente a cada tool call.
-# Excluimos el endpoint binario (POST /upload) — usar upload_audio_from_url en su lugar.
+# MCP server - expone todos los endpoints como herramientas MCP en /mcp.
+# POST /upload (binario) tiene include_in_schema=False — fastapi-mcp no lo ve.
+# Para subir audio desde MCP usar: upload_audio_from_url o upload_audio_from_base64.
 mcp = FastApiMCP(
     app,
     auth_config=AuthConfig(
         dependencies=[Depends(get_api_key)],
     ),
     headers=["authorization", "x-api-key"],
-    exclude_operations=["upload_file_upload_post"],
 )
 mcp.mount()
