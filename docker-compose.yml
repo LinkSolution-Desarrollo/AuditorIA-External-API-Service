@@ -4,7 +4,7 @@ services:
   # ---------------------------------------------------------------------------
   postgres:
     image: postgres:16
-    container_name: postgres
+    container_name: external_api_postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
@@ -12,10 +12,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       TZ: ${TZ}
     volumes:
-      - auditoria-db-data:/var/lib/postgresql/data
-      - ./init-db:/docker-entrypoint-initdb.d
-    # Postgres tuning: 256MB buffer, SSD optimization, increased work mem
-    command: -c listen_addresses='*' -c shared_buffers=256MB -c effective_cache_size=1GB -c work_mem=16MB -c maintenance_work_mem=128MB -c random_page_cost=1.1
+      - external-api-db-data:/var/lib/postgresql/data
+    command: >
+      -c listen_addresses='*'
+      -c shared_buffers=128MB
+      -c work_mem=8MB
     ports:
       - "5432:5432"
     healthcheck:
@@ -29,7 +30,7 @@ services:
   # ---------------------------------------------------------------------------
   minio:
     image: quay.io/minio/minio:RELEASE.2025-01-18T00-31-37Z
-    container_name: minio
+    container_name: external_api_minio
     restart: unless-stopped
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
@@ -41,7 +42,7 @@ services:
       - "9000:9000"
       - "9001:9001"
     volumes:
-      - minio-data:/data
+      - external-api-minio-data:/data
 
   createbuckets:
     image: minio/mc
@@ -53,89 +54,39 @@ services:
       until /usr/bin/mc alias set myminio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD}; do
         sleep 2;
       done;
-      /usr/bin/mc mb --ignore-existing myminio/${MINIO_BUCKET_NAME:-avatars};
-      /usr/bin/mc anonymous set public myminio/${MINIO_BUCKET_NAME:-avatars} || true;
       /usr/bin/mc mb --ignore-existing myminio/audios;
       /usr/bin/mc anonymous set public myminio/audios || true;
-      /usr/bin/mc mb --ignore-existing myminio/avatars;
-      /usr/bin/mc anonymous set public myminio/avatars || true;
       exit 0;
       "
 
   # ---------------------------------------------------------------------------
-  # IAM (Keycloak)
+  # EXTERNAL API SERVICE
   # ---------------------------------------------------------------------------
-  keycloak:
-    image: quay.io/keycloak/keycloak:26.0.0
-    container_name: keycloak
-    restart: unless-stopped
-    environment:
-      KC_DB: postgres
-      KC_DB_URL: ${KC_DB_URL}
-      KC_DB_USERNAME: ${POSTGRES_USER}
-      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin
-      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:-${KEYCLOAK_SERVER_URL}} # URL pública para el navegador
-      KC_PROXY_HEADERS: xforwarded # Indica a Keycloak que confíe en los encabezados proxy estándar (X-Forwarded-Proto, etc.) de Nginx.
-      KC_HTTP_ENABLED: "true" # Permite que Keycloak acepte tráfico HTTP desde el proxy (ya que SSL se termina en el proxy)
-    command: start-dev --import-realm
-    volumes:
-      - ./realm-export.json:/opt/keycloak/data/import/realm-export.json
-    ports:
-      - "8008:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
-  keycloak-setup:
-    image: quay.io/keycloak/keycloak:26.0.0
-    container_name: keycloak_setup
-    restart: "no"
-    depends_on:
-      keycloak:
-        condition: service_started
-    entrypoint: ["/bin/sh", "/scripts/keycloak-setup.sh"]
-    environment:
-      SERVER_URL: ${KEYCLOAK_SERVER_URL}
-      ADMIN_USER: admin
-      ADMIN_PASS: admin
-      REALM: auditoria
-      CLIENT_ID: Auditoria
-    volumes:
-      - ./scripts:/scripts
-
-  backend:
-    build: ./AuditorIA-App/Backend
-    container_name: auditoria_backend
+  external-api:
+    build: .
+    container_name: external_api
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "8000:8080"
     env_file:
       - .env
     environment:
       DB_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      KEYCLOAK_SERVER_URL: ${KEYCLOAK_SERVER_URL}
-      MINIO_URL: ${MINIO_INTERNAL_URL:-http://minio:9000}
-      S3_ENDPOINT: ${MINIO_INTERNAL_URL:-http://minio:9000}
-      S3_INTERNAL_ENDPOINT: ${MINIO_INTERNAL_URL:-http://minio:9000}
+      MINIO_URL: http://minio:9000
+      S3_ENDPOINT: http://minio:9000
+      PORT: "8080"
     depends_on:
       postgres:
         condition: service_healthy
       minio:
         condition: service_started
-      keycloak:
-        condition: service_started
-    networks:
-      default:
-        aliases:
-          - auditoria_backend
 
   # ---------------------------------------------------------------------------
-  # PGADMIN
+  # PGADMIN (opcional - admin de base de datos)
   # ---------------------------------------------------------------------------
   pgadmin:
     image: dpage/pgadmin4
-    container_name: pgadmin
+    container_name: external_api_pgadmin
     restart: unless-stopped
     depends_on:
       - postgres
@@ -143,177 +94,14 @@ services:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
     volumes:
-      - pgadmin-data:/var/lib/pgadmin
+      - external-api-pgadmin-data:/var/lib/pgadmin
     ports:
       - "5050:80"
-
-  # ---------------------------------------------------------------------------
-  # PORTAINER
-  # ---------------------------------------------------------------------------
-  portainer:
-    image: portainer/portainer-ce:latest
-    container_name: portainer
-    restart: unless-stopped
-    ports:
-      - "9443:9443"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - portainer-data:/data
-
-  # ---------------------------------------------------------------------------
-  # NGINX PROXY MANAGER
-  # ---------------------------------------------------------------------------
-  nginx-proxy-manager:
-    image: jc21/nginx-proxy-manager:latest
-    container_name: nginx-proxy-manager
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "81:81"
-      - "443:443"
-    volumes:
-      - npm-data:/data
-      - npm-letsencrypt:/etc/letsencrypt
-
-  frontend:
-    build:
-      context: ./AuditorIA-App/Frontend
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-        NEXT_PUBLIC_KEYCLOAK_URL: ${NEXT_PUBLIC_KEYCLOAK_URL:-http://localhost:8008}
-        NEXT_PUBLIC_KEYCLOAK_REALM: ${NEXT_PUBLIC_KEYCLOAK_REALM:-auditoria}
-        NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: ${NEXT_PUBLIC_KEYCLOAK_CLIENT_ID:-Auditoria}
-        NEXT_PUBLIC_POSTHOG_KEY: ${NEXT_PUBLIC_POSTHOG_KEY}
-        NEXT_PUBLIC_POSTHOG_HOST: ${NEXT_PUBLIC_POSTHOG_HOST}
-        NEXT_PUBLIC_HIDE_BRANDING: ${NEXT_PUBLIC_HIDE_BRANDING:-false}
-        NEXT_PUBLIC_VIDEO_BACKGROUND_URL: ${NEXT_PUBLIC_VIDEO_BACKGROUND_URL}
-        NEXT_PUBLIC_SFTP_SERVICE_URL: ${NEXT_PUBLIC_SFTP_SERVICE_URL}
-    container_name: auditoria_frontend
-    restart: unless-stopped
-    ports:
-      - "3000:3000"
-    env_file:
-      - .env
-    environment:
-      - N8N=${API_URL:-http://localhost:8000}
-      - N8N_DEV=${API_URL:-http://localhost:8000}
-      - API_URL=${API_URL:-http://localhost:8000}
-    depends_on:
-      - backend
-
-  worker_whisper:
-    build:
-      context: ./AuditorIA-App
-      dockerfile: Worker-Whisper/Dockerfile
-    container_name: auditoria_worker_whisper
-    restart: unless-stopped
-    profiles:
-      - worker-whisper
-    env_file:
-      - .env
-    environment:
-      BACKEND_URL: ${API_URL:-http://localhost:8000}
-      MINIO_URL: ${MINIO_INTERNAL_URL:-http://minio:9000}
-      S3_ENDPOINT: ${MINIO_INTERNAL_URL:-http://minio:9000}
-      S3_INTERNAL_ENDPOINT: ${MINIO_INTERNAL_URL:-http://minio:9000}
-    depends_on:
-      backend:
-        condition: service_started
-      minio:
-        condition: service_started
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-
-  worker_gpt:
-    build:
-      context: ./AuditorIA-App
-      dockerfile: Worker-GPT/Dockerfile
-    container_name: auditoria_worker_gpt
-    restart: unless-stopped
-    profiles:
-      - worker-gpt
-    env_file:
-      - .env
-    environment:
-      BACKEND_URL: ${API_URL:-http://localhost:8000}
-      MINIO_URL: ${MINIO_INTERNAL_URL:-http://minio:9000}
-      S3_ENDPOINT: ${MINIO_INTERNAL_URL:-http://minio:9000}
-      S3_INTERNAL_ENDPOINT: ${MINIO_INTERNAL_URL:-http://minio:9000}
-      GPT_MODEL: gpt-4o-audio-preview
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      HF_TOKEN: ${HF_TOKEN}
-    depends_on:
-      backend:
-        condition: service_started
-      minio:
-        condition: service_started
-
-  worker_deepgram:
-    build:
-      context: ./AuditorIA-App/Worker-Deepgram
-    container_name: auditoria_worker_deepgram
-    restart: unless-stopped
-    profiles:
-      - worker-deepgram
-    env_file:
-      - .env
-    environment:
-      BACKEND_URL: ${API_URL:-http://localhost:8000}
-      MINIO_URL: ${MINIO_INTERNAL_URL:-http://minio:9000}
-      S3_ENDPOINT: ${MINIO_INTERNAL_URL:-http://minio:9000}
-      S3_INTERNAL_ENDPOINT: ${MINIO_INTERNAL_URL:-http://minio:9000}
-      S3_ACCESS_KEY: ${MINIO_ACCESS_KEY}
-      S3_SECRET_KEY: ${MINIO_SECRET_ACCESS_KEY}
-      AUDIO_BUCKET_NAME: ${AUDIO_BUCKET_NAME:-audios}
-      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY}
-      DEEPGRAM_MODEL: ${DEEPGRAM_MODEL:-nova-3}
-    depends_on:
-      backend:
-        condition: service_started
-      minio:
-        condition: service_started
-
-  docs:
-    build: ./AuditorIA-App/documentation
-    container_name: auditoria_docs
-    restart: unless-stopped
-    ports:
-      - "3500:3000"
-
-  # ---------------------------------------------------------------------------
-  # GRAFANA
-  # ---------------------------------------------------------------------------
-  grafana:
-    image: grafana/grafana:11.5.1
-    container_name: auditoria_grafana
-    restart: unless-stopped
-    ports:
-      - "3001:3000"
-    environment:
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
-      GF_USERS_ALLOW_SIGN_UP: "false"
-      GF_SECURITY_ALLOW_EMBEDDING: "true"
-      GF_SERVER_DOMAIN: ${GRAFANA_DOMAIN:-localhost}
-      GF_SERVER_ROOT_URL: ${GRAFANA_DOMAIN_HTTPS:-http://localhost}
-      GF_SERVER_PROTOCOL: http # Internamente sigue siendo http, el proxy maneja https
-    volumes:
-      - auditoria-grafana-data:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning
 
 # ---------------------------------------------------------------------------
 # VOLÚMENES
 # ---------------------------------------------------------------------------
 volumes:
-  auditoria-db-data:
-  minio-data:
-  pgadmin-data:
-  portainer-data:
-  npm-data:
-  npm-letsencrypt:
-  auditoria-grafana-data:
+  external-api-db-data:
+  external-api-minio-data:
+  external-api-pgadmin-data:
