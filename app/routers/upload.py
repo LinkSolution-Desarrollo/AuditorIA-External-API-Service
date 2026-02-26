@@ -218,6 +218,7 @@ async def upload_file(
 
 @router.post(
     "/from-url",
+    operation_id="upload_audio_from_url",
     summary="Upload audio from a public URL for transcription",
     description=(
         "Downloads an audio file from a publicly accessible URL and queues it for transcription. "

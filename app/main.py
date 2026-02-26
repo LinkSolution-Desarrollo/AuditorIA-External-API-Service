@@ -71,13 +71,15 @@ def health():
 
 
 # MCP server - expone todos los endpoints como herramientas MCP en /mcp
-# Auth: requiere X-API-Key válida para acceder al endpoint /mcp
-# El header x-api-key también se forwardea automáticamente a cada tool call
+# Auth: requiere Bearer JWT (via OAuth) o X-API-Key para acceder al endpoint /mcp.
+# El header authorization se forwardea automáticamente a cada tool call.
+# Excluimos el endpoint binario (POST /upload) — usar upload_audio_from_url en su lugar.
 mcp = FastApiMCP(
     app,
     auth_config=AuthConfig(
         dependencies=[Depends(get_api_key)],
     ),
     headers=["authorization", "x-api-key"],
+    exclude_operations=["upload_file_upload_post"],
 )
 mcp.mount()
