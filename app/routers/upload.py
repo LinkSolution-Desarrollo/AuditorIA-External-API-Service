@@ -1,4 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, BackgroundTasks, Request, Form
+from pydantic import BaseModel, HttpUrl
 from sqlalchemy.orm import Session
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -14,6 +15,7 @@ import tempfile
 import shutil
 import uuid
 import logging
+import requests as http_requests
 from datetime import datetime
 from app.schemas.transcription import TranscriptionConfig
 
@@ -29,7 +31,22 @@ settings = get_settings()
 limiter = Limiter(key_func=get_remote_address)
 
 
-@router.post("")
+class UploadFromUrlRequest(BaseModel):
+    url: str
+    campaign_id: int
+    username: str
+    operator_id: int
+    language: str = "es"
+    model: str = "nova-3"
+
+
+@router.post(
+    "",
+    summary="Upload audio file for transcription",
+    description="Uploads a binary audio file (mp3, wav, ogg, m4a, flac, aac) to start a transcription task. "
+                "The file is stored in S3 and a task is queued for processing. "
+                "NOTE: MCP clients and AI sandboxes cannot send binary files — use POST /upload/from-url instead.",
+)
 @limiter.limit("10/minute")
 async def upload_file(
     request: Request,
@@ -197,3 +214,158 @@ async def upload_file(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"An error occurred: {str(e)}")
+
+
+@router.post(
+    "/from-url",
+    summary="Upload audio from a public URL for transcription",
+    description=(
+        "Downloads an audio file from a publicly accessible URL and queues it for transcription. "
+        "Use this endpoint from MCP clients, AI agents, and sandbox environments that cannot send binary files. "
+        "Supported formats: mp3, wav, ogg, m4a, flac, aac. Max size: 50MB. "
+        "The URL must be publicly accessible (no auth required to download). "
+        "Example sources: S3 presigned URLs, CDN links, direct download links."
+    ),
+)
+@limiter.limit("10/minute")
+async def upload_from_url(
+    request: Request,
+    body: UploadFromUrlRequest,
+    db: Session = Depends(get_db),
+    api_key: ApiKeyData = Depends(get_api_key),
+):
+    settings = get_settings()
+
+    # Validate campaign exists
+    campaign = db.query(Campaign).filter(Campaign.campaign_id == body.campaign_id).first()
+    if not campaign:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Campaign with ID {body.campaign_id} not found."
+        )
+
+    # Download file from URL
+    try:
+        response = http_requests.get(body.url, stream=True, timeout=60)
+        response.raise_for_status()
+    except http_requests.exceptions.Timeout:
+        raise HTTPException(status_code=422, detail="Timed out downloading file from URL.")
+    except http_requests.exceptions.RequestException as e:
+        raise HTTPException(status_code=422, detail=f"Could not download file from URL: {str(e)}")
+
+    # Determine filename from URL or Content-Disposition header
+    file_name = None
+    content_disposition = response.headers.get("Content-Disposition", "")
+    if "filename=" in content_disposition:
+        file_name = content_disposition.split("filename=")[-1].strip().strip('"')
+    if not file_name:
+        file_name = body.url.split("?")[0].split("/")[-1] or "audio_upload"
+
+    # Ensure it has an extension
+    ext = os.path.splitext(file_name)[1].lower()
+    if ext not in settings.ALLOWED_EXTENSIONS:
+        file_name = f"{os.path.splitext(file_name)[0]}.mp3"
+        ext = ".mp3"
+
+    file_uuid = str(uuid.uuid4())
+    bucket_name = settings.S3_BUCKET
+
+    try:
+        # Write to temp file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                tmp.write(chunk)
+            tmp_path = tmp.name
+
+        file_size = os.path.getsize(tmp_path)
+
+        if file_size == 0:
+            os.unlink(tmp_path)
+            raise HTTPException(status_code=400, detail="Downloaded file is empty.")
+
+        if file_size > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
+            os.unlink(tmp_path)
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large. Max size is {settings.MAX_UPLOAD_SIZE_MB}MB."
+            )
+
+        audio_duration = get_audio_duration(tmp_path)
+        object_name = f"{body.username}/{file_name}"
+
+        if check_file_exists_in_s3(bucket_name, object_name):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Conflict: file '{file_name}' already uploaded by user '{body.username}'."
+            )
+
+        upload_success = upload_fileobj_to_s3(
+            open(tmp_path, "rb"), bucket_name, object_name,
+            content_type=response.headers.get("Content-Type", "audio/mpeg")
+        )
+        os.unlink(tmp_path)
+
+        if not upload_success:
+            raise HTTPException(status_code=500, detail="Failed to upload file to storage.")
+
+        task_params = {
+            "language": body.language,
+            "task": "transcribe",
+            "model": body.model,
+            "device": "deepgram",
+            "device_index": 0,
+            "threads": None,
+            "batch_size": None,
+            "compute_type": None,
+            "align_model": None,
+            "interpolate_method": None,
+            "return_char_alignments": False,
+            "asr_options": {},
+            "vad_options": {},
+            "min_speakers": None,
+            "max_speakers": None,
+            "s3_path": object_name,
+            "username": body.username,
+            "api_key_id": api_key.id,
+            "source_url": body.url,
+        }
+
+        new_task = Task(
+            uuid=file_uuid,
+            file_name=file_name,
+            url=object_name,
+            status="pending",
+            task_type="full_process",
+            task_params=task_params,
+            language=body.language,
+            audio_duration=audio_duration,
+        )
+        db.add(new_task)
+
+        new_call_log = CallLog(
+            file_name=file_name,
+            date=datetime.utcnow(),
+            campaign_id=body.campaign_id,
+            call_id=file_uuid,
+            operator_id=body.operator_id,
+            upload_by=body.username,
+            url=object_name,
+            log=f"Uploaded via External API from URL (Task UUID: {file_uuid})",
+            sectot=audio_duration,
+        )
+        db.add(new_call_log)
+
+        db.commit()
+        db.refresh(new_task)
+
+        return {
+            "task_id": new_task.uuid,
+            "status": "queued",
+            "message": "File downloaded and queued successfully",
+            "file_name": file_name,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")

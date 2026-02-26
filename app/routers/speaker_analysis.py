@@ -11,7 +11,13 @@ from app.middleware.auth import get_api_key
 router = APIRouter(prefix="/speaker-analysis", tags=["Speaker Analysis"], dependencies=[Depends(get_api_key)])
 
 
-@router.get("/{task_uuid}", )
+@router.get(
+    "/{task_uuid}",
+    summary="Get speaker diarization analysis for a task",
+    description="Returns the speaker-separated analysis of a call transcription, identifying "
+                "which segments belong to the agent vs the customer, speaking times, and turn-taking patterns. "
+                "Use generate_new=true to force reanalysis.",
+)
 @limiter.limit("20/minute")
 def get_analysis(request: Request, task_uuid: str, generate_new: bool = Query(False), db: Session = Depends(get_db), api_key: GlobalApiKey = Depends(get_api_key)):
     from app.services.speaker_analysis_service import SpeakerAnalysisService

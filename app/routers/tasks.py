@@ -19,7 +19,13 @@ router = APIRouter(
 
 limiter = Limiter(key_func=get_remote_address)
 
-@router.get("/", response_model=List[TaskSimple])
+@router.get(
+    "/",
+    response_model=List[TaskSimple],
+    summary="List transcription tasks",
+    description="Returns a paginated list of all audio transcription tasks created by this API key, "
+                "ordered by creation date descending. Each task shows its current status and basic metadata.",
+)
 @limiter.limit("20/minute")
 def list_tasks(
     request: Request, # Required for limiter
@@ -54,7 +60,13 @@ def list_tasks(
         
     return tasks
 
-@router.get("/{task_uuid}", response_model=Result)
+@router.get(
+    "/{task_uuid}",
+    response_model=Result,
+    summary="Get task status and transcription result",
+    description="Returns the full details of a task: current status (pending/processing/completed/failed), "
+                "the transcription result when completed, metadata (language, duration, file name), and any error message.",
+)
 @limiter.limit("60/minute")
 def get_task(
     request: Request,
@@ -91,7 +103,12 @@ def get_task(
         error=task.error
     )
 
-@router.get("/{task_uuid}/audio")
+@router.get(
+    "/{task_uuid}/audio",
+    summary="Download audio file for a task",
+    description="Streams the original audio file stored in S3 for the given task. "
+                "Returns the file as an audio/mpeg stream with Content-Disposition set for download.",
+)
 @limiter.limit("5/minute")
 async def get_task_audio(
     request: Request,
@@ -135,7 +152,13 @@ async def get_task_audio(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.delete("/{task_uuid}", status_code=204)
+@router.delete(
+    "/{task_uuid}",
+    status_code=204,
+    summary="Delete a task",
+    description="Permanently removes a task record from the database. Does not delete the audio file from storage. "
+                "Only tasks belonging to the authenticated API key can be deleted.",
+)
 @limiter.limit("5/minute")
 def delete_task(
     request: Request,

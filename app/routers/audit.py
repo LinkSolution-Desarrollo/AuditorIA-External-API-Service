@@ -10,7 +10,14 @@ from app.schemas.audit import AuditRequest, AuditResponse
 router = APIRouter(prefix="/audit", tags=["Audit"], dependencies=[Depends(get_api_key)])
 limiter = Limiter(key_func=get_remote_address)
 
-@router.post("/generate", response_model=AuditResponse)
+@router.post(
+    "/generate",
+    response_model=AuditResponse,
+    summary="Generate quality audit for a call or chat",
+    description="Runs the AuditorIA quality scoring rubric against a completed task. "
+                "Set is_call=true for phone call transcriptions, is_call=false for chat sessions. "
+                "Returns a score, per-criterion breakdown, and whether the interaction is an audit failure.",
+)
 @limiter.limit("10/minute")
 def generate_audit(audit_req: AuditRequest, request: Request, db: Session = Depends(get_db), api_key: GlobalApiKey = Depends(get_api_key)):
     from app.services.audit_service import AuditService

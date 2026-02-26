@@ -10,7 +10,7 @@ from app.routers import (
     upload_router, tasks_router, chat_router, campaigns_router,
     webhooks_router, anura_helpers_router, test_utils_router,
     tags_router, speaker_analysis_router, agent_identification_router,
-    audit_router  # reports_router removed - service doesn't exist
+    audit_router, reports_router,
 )
 from app.core.config import get_settings
 from app.core.limiter import limiter
@@ -53,7 +53,7 @@ app.include_router(tags_router)
 app.include_router(speaker_analysis_router)
 app.include_router(agent_identification_router)
 app.include_router(audit_router)
-# app.include_router(reports_router)  # Commented out - service doesn't exist
+app.include_router(reports_router)
 
 # Only include test endpoints in DEBUG mode
 if settings.DEBUG:

@@ -10,7 +10,13 @@ from app.schemas.tags import TagsResponse
 router = APIRouter(prefix="/tags", tags=["Tags"], dependencies=[Depends(get_api_key)])
 limiter = Limiter(key_func=get_remote_address)
 
-@router.get("/{task_uuid}", response_model=TagsResponse)
+@router.get(
+    "/{task_uuid}",
+    response_model=TagsResponse,
+    summary="Get AI-generated tags for a task",
+    description="Returns the topic/keyword tags automatically generated from the call or chat transcription. "
+                "Use generate_new=true to force regeneration even if tags already exist.",
+)
 @limiter.limit("20/minute")
 def get_tags(request: Request, task_uuid: str, generate_new: bool = Query(False), db: Session = Depends(get_db), api_key: GlobalApiKey = Depends(get_api_key)):
     from app.services.tags_service import TagsService

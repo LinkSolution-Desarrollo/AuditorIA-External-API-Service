@@ -11,7 +11,12 @@ from app.middleware.auth import get_api_key
 router = APIRouter(prefix="/agent-identification", tags=["Agent ID"], dependencies=[Depends(get_api_key)])
 
 
-@router.get("/{task_uuid}", )
+@router.get(
+    "/{task_uuid}",
+    summary="Identify the agent in a call recording",
+    description="Analyzes the call transcription to identify which agent (operator) handled the interaction, "
+                "matching voice/text patterns against known agent profiles stored in the platform.",
+)
 @limiter.limit("20/minute")
 def get_identification(request: Request, task_uuid: str, db: Session = Depends(get_db), api_key: GlobalApiKey = Depends(get_api_key)):
     from app.services.agent_identification_service import AgentIdentificationService
