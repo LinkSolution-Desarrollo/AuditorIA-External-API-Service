@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi_mcp import AuthConfig, FastApiMCP
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIASGIMiddleware
 
 from app.routers import (
     oauth_router,
@@ -24,10 +23,11 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Rate Limiting
+# Rate Limiting — middleware omitido intencionalmente: SlowAPIMiddleware y
+# SlowAPIASGIMiddleware rompen SSE (MCP). Los decoradores @limiter.limit() en
+# cada endpoint siguen activos; las excepciones las captura el handler de abajo.
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-app.add_middleware(SlowAPIASGIMiddleware)
 
 # CORS configuration
 origins = settings.CORS_ORIGINS
