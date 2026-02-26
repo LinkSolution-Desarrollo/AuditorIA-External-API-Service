@@ -1,6 +1,6 @@
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi_mcp import FastApiMCP
+from fastapi_mcp import AuthConfig, FastApiMCP
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -13,6 +13,7 @@ from app.routers import (
 )
 from app.core.config import get_settings
 from app.core.limiter import limiter
+from app.middleware.auth import get_api_key
 
 settings = get_settings()
 
@@ -66,5 +67,13 @@ def health():
 
 
 # MCP server - expone todos los endpoints como herramientas MCP en /mcp
-mcp = FastApiMCP(app)
+# Auth: requiere X-API-Key válida para acceder al endpoint /mcp
+# El header x-api-key también se forwardea automáticamente a cada tool call
+mcp = FastApiMCP(
+    app,
+    auth_config=AuthConfig(
+        dependencies=[Depends(get_api_key)],
+    ),
+    headers=["authorization", "x-api-key"],
+)
 mcp.mount()
