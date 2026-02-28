@@ -19,6 +19,8 @@ langchain-core
 openai
 # OAuth / JWT
 python-jose[cryptography]
+# Stripe billing
+stripe
 # Testing
 pytest
 httpx

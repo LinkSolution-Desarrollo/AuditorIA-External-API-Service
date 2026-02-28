@@ -10,8 +10,10 @@ from app.routers import (
     webhooks_router, anura_helpers_router, test_utils_router,
     tags_router, speaker_analysis_router, agent_identification_router,
     audit_router, reports_router,
+    billing_usage_router, billing_stripe_router,
 )
 from app.core.config import get_settings
+from app.core.database import init_db
 from app.core.limiter import limiter
 from app.middleware.auth import get_api_key
 
@@ -54,10 +56,17 @@ app.include_router(speaker_analysis_router)
 app.include_router(agent_identification_router)
 app.include_router(audit_router)
 app.include_router(reports_router)
+app.include_router(billing_usage_router)
+app.include_router(billing_stripe_router)
 
 # Only include test endpoints in DEBUG mode
 if settings.DEBUG:
     app.include_router(test_utils_router)
+
+@app.on_event("startup")
+def on_startup():
+    init_db()
+
 
 @app.get("/")
 @limiter.limit("5/minute")

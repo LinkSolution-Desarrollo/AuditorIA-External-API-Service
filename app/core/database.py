@@ -22,6 +22,14 @@ if db_url:
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
+def init_db() -> None:
+    """Create all tables defined in SQLAlchemy models (new tables only — existing ones are untouched)."""
+    if engine is None:
+        return
+    from app.models import Base  # noqa: F401 — ensures all models are registered
+    Base.metadata.create_all(bind=engine, checkfirst=True)
+
+
 def get_db():
     if SessionLocal is None:
         raise HTTPException(

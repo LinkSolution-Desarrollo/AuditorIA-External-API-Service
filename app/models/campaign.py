@@ -1,5 +1,6 @@
 from datetime import datetime
 from sqlalchemy import Column, String, Integer, DateTime, Text
+from sqlalchemy.orm import relationship
 from .task import Base
 
 
@@ -50,4 +51,10 @@ class Campaign(Base):
         onupdate=datetime.utcnow,
         nullable=False,
         comment="Last update timestamp"
+    )
+
+    billing_limit = relationship(
+        "CampaignBillingLimit",
+        back_populates="campaign",
+        uselist=False,
     )
