@@ -3,7 +3,7 @@ Router for Anura webhook integration.
 """
 import logging
 from json import JSONDecodeError
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Request, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -36,15 +36,37 @@ INT_FIELDS = {
 }
 FLOAT_FIELDS = {"price"}
 BOOL_FIELDS = {"wasrecorded"}
+SENSITIVE_FIELDS = {
+    "calling",
+    "called",
+    "callingname",
+    "calledname",
+    "queueagentname",
+    "accountname",
+}
 
 
-def _to_bool(value: Any) -> bool:
+def _to_bool(value: Any) -> Optional[bool]:
     if isinstance(value, bool):
         return value
     if value is None:
-        return False
+        return None
     text = str(value).strip().lower()
-    return text in {"1", "true", "yes", "y", "si", "on"}
+    if text in {"1", "true", "yes", "y", "si", "on"}:
+        return True
+    if text in {"0", "false", "no", "n", "off"}:
+        return False
+    return None
+
+
+def _redact_payload_for_logs(payload: Dict[str, Any]) -> Dict[str, Any]:
+    redacted: Dict[str, Any] = {}
+    for key, value in payload.items():
+        if key in SENSITIVE_FIELDS and value is not None:
+            redacted[key] = "***REDACTED***"
+            continue
+        redacted[key] = value
+    return redacted
 
 
 def _coerce_payload_types(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -144,7 +166,7 @@ async def anura_webhook(
         logger.info(
             "Anura webhook payload received content_type=%s payload=%s",
             request.headers.get("content-type"),
-            payload_dict,
+            _redact_payload_for_logs(payload_dict),
         )
 
         payload = AnuraWebhookPayload(**payload_dict)
