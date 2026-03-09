@@ -6,6 +6,7 @@ from json import JSONDecodeError
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Request, Depends, HTTPException
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -13,6 +14,7 @@ from app.core.limiter import limiter
 from app.middleware.auth import get_api_key
 from app.models import GlobalApiKey
 from app.schemas.anura import AnuraWebhookPayload, AnuraWebhookResponse
+from app.schemas.call_event import CallEvent
 from app.services.anura_service import process_anura_webhook, AnuraIntegrationError
 
 router = APIRouter(
@@ -20,7 +22,7 @@ router = APIRouter(
     tags=["Webhooks"],
 )
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("uvicorn.error")
 
 INT_FIELDS = {
     "hookid",
@@ -88,7 +90,11 @@ def _coerce_payload_types(payload: Dict[str, Any]) -> Dict[str, Any]:
             try:
                 normalized[key] = int(value)
             except ValueError:
-                normalized[key] = value
+                # Some senders provide decimal strings for integer fields (e.g. "120.0")
+                try:
+                    normalized[key] = int(float(value))
+                except ValueError:
+                    normalized[key] = value
             continue
 
         if key in FLOAT_FIELDS and isinstance(value, str):
@@ -163,11 +169,23 @@ async def anura_webhook(
     """
     try:
         payload_dict = await _extract_webhook_payload(request)
+        try:
+            call_event = CallEvent.from_anura_payload(payload_dict)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error": f"Normalización fallida: {str(exc)}",
+                    "payload": payload_dict,
+                },
+            )
+        logger.info("Anura webhook raw payload=%s", payload_dict)
         logger.info(
             "Anura webhook payload received content_type=%s payload=%s",
             request.headers.get("content-type"),
             _redact_payload_for_logs(payload_dict),
         )
+        logger.info("CallEvent normalized=%s", call_event.dict())
 
         payload = AnuraWebhookPayload(**payload_dict)
 
@@ -177,13 +195,16 @@ async def anura_webhook(
                 message=f"Webhook received (ignored until END): {payload.hooktrigger}",
                 call_id=payload.cdrid,
                 recording_downloaded=False,
+                payload=payload_dict,
+                call_event=call_event.dict(),
             )
 
         # Process webhook
         result = process_anura_webhook(
             payload=payload,
             db=db,
-            api_key_record=api_key
+            api_key_record=api_key,
+            call_event=call_event,
         )
         
         # Build response
@@ -192,7 +213,9 @@ async def anura_webhook(
             message=f"Webhook processed successfully: {payload.hooktrigger}",
             call_id=result['call_id'],
             task_id=result.get('task_id'),
-            recording_downloaded=result['recording_downloaded']
+            recording_downloaded=result['recording_downloaded'],
+            payload=payload_dict,
+            call_event=call_event.dict(),
         )
         
         # Log any warnings
@@ -201,12 +224,26 @@ async def anura_webhook(
         
         return response
         
+    except HTTPException:
+        raise
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": f"Validation error: {str(e)}",
+                "payload": payload_dict if 'payload_dict' in locals() else None,
+            },
+        )
     except AnuraIntegrationError as e:
         raise HTTPException(
             status_code=422,
-            detail=f"Integration error: {str(e)}"
+            detail={
+                "error": f"Integration error: {str(e)}",
+                "payload": payload_dict if 'payload_dict' in locals() else None,
+            },
         )
     except Exception as e:
+        logger.exception("Unexpected error while processing Anura webhook")
         raise HTTPException(
             status_code=500,
             detail=f"Internal error: {str(e)}"
