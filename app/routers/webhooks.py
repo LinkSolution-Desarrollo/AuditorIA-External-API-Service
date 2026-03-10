@@ -134,3 +134,141 @@ async def anura_webhook_test(
             status_code=400,
             detail=f"Validation error: {str(e)}"
         )
+
+
+@router.post("/net2phone/", response_model=Net2PhoneWebhookResponse)
+@limiter.limit("30/minute")
+async def net2phone_webhook(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    api_key: GlobalApiKey = Depends(get_api_key),
+):
+    """
+    Receive webhooks from net2phone.
+    
+    This endpoint processes call events from net2phone:
+    - call_completed: Call ended (downloads recording if available)
+    - call_answered: Call answered
+    - call_ringing: Call initiated
+    - call_missed: Call missed
+    - call_recorded: Recording available
+    
+    Authentication:
+    - X-API-Key header (API Key authentication)
+    - x-net2phone-signature header (HMAC-SHA256 signature)
+    
+    Expected payload format:
+    {
+      "event": "call_completed",
+      "call_id": "a471d33e562b535b9ec530e1c0c3a5b2",
+      "timestamp": "2021-10-27T08:58:21.66Z",
+      "duration": 120,
+      "direction": "inbound",
+      "originating_number": "+5491167950079",
+      "dialed_number": "+5491126888209",
+      "user": {
+        "id": 1,
+        "name": "Jane Doe",
+        "account_id": 42
+      },
+      "recording_url": "https://net2phone.com/recordings/call_12345.mp3"
+    }
+    """
+    try:
+        # Get raw body for signature verification
+        raw_body = await request.body()
+        
+        # Verify signature if present
+        signature = request.headers.get('x-net2phone-signature')
+        timestamp = request.headers.get('x-net2phone-timestamp')
+        
+        if signature and timestamp:
+            secret = getattr(settings, 'NET2PHONE_WEBHOOK_SECRET', '')
+            
+            if secret and not verify_webhook_signature(raw_body, signature, timestamp, secret):
+                raise HTTPException(
+                    status_code=401,
+                    detail="Invalid webhook signature"
+                )
+        
+        # Parse payload
+        payload_dict = await request.json()
+        payload = Net2PhoneWebhookPayload(**payload_dict)
+        
+        # Process webhook
+        result = process_net2phone_webhook(
+            payload=payload,
+            db=db,
+            api_key_record=api_key
+        )
+        
+        # Build response
+        response = Net2PhoneWebhookResponse(
+            success=True,
+            message=f"Webhook processed successfully: {payload.event}",
+            call_id=result['call_id'],
+            task_id=result.get('task_id'),
+            recording_downloaded=result['recording_downloaded'],
+            event_type=payload.event
+        )
+        
+        # Log any warnings
+        if result['errors']:
+            response.message += f" (Warnings: {'; '.join(result['errors'])})"
+        
+        return response
+        
+    except Net2PhoneIntegrationError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Integration error: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal error: {str(e)}"
+        )
+
+
+@router.get("/net2phone/health")
+@limiter.limit("10/minute")
+async def net2phone_webhook_health(request: Request):
+    """
+    Health check endpoint for net2phone webhook.
+    Can be used to verify webhook URL is accessible.
+    """
+    return {
+        "status": "ok",
+        "service": "AuditorIA net2phone Integration",
+        "webhook_ready": True
+    }
+
+
+@router.post("/net2phone/test")
+@limiter.limit("5/minute")
+async def net2phone_webhook_test(
+    request: Request,
+    payload: dict,
+):
+    """
+    Test endpoint for net2phone webhook (for development/testing).
+    Does not require authentication.
+    """
+    try:
+        # Validate payload
+        validated_payload = Net2PhoneWebhookPayload(**payload)
+        
+        return {
+            "status": "validated",
+            "message": "Payload is valid",
+            "event": validated_payload.event,
+            "call_id": validated_payload.call_id,
+            "has_recording": validated_payload.recording_url is not None,
+            "recording_url": validated_payload.recording_url
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Validation error: {str(e)}"
+        )
