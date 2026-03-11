@@ -1,7 +1,11 @@
 """
 Router for Anura webhook integration.
 """
-from fastapi import APIRouter, Request, Depends, HTTPException, BackgroundTasks
+import logging
+from json import JSONDecodeError
+from typing import Any, Dict, Optional
+
+from fastapi import APIRouter, Request, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -10,22 +14,122 @@ from app.middleware.auth import get_api_key
 from app.models import GlobalApiKey
 from app.schemas.anura import AnuraWebhookPayload, AnuraWebhookResponse
 from app.services.anura_service import process_anura_webhook, AnuraIntegrationError
-from app.core.config import get_settings
 
 router = APIRouter(
     prefix="/webhook",
     tags=["Webhooks"],
 )
 
-settings = get_settings()
+logger = logging.getLogger(__name__)
+
+INT_FIELDS = {
+    "hookid",
+    "hooktemplateid",
+    "duration",
+    "billseconds",
+    "queuetotaltime",
+    "queuetalktime",
+    "queuewaittime",
+    "tenantid",
+    "accountid",
+    "terminalid",
+}
+FLOAT_FIELDS = {"price"}
+BOOL_FIELDS = {"wasrecorded"}
+SENSITIVE_FIELDS = {
+    "calling",
+    "called",
+    "callingname",
+    "calledname",
+    "queueagentname",
+    "accountname",
+}
+
+
+def _to_bool(value: Any) -> Optional[bool]:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return None
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "y", "si", "on"}:
+        return True
+    if text in {"0", "false", "no", "n", "off"}:
+        return False
+    return None
+
+
+def _redact_payload_for_logs(payload: Dict[str, Any]) -> Dict[str, Any]:
+    redacted: Dict[str, Any] = {}
+    for key, value in payload.items():
+        if key in SENSITIVE_FIELDS and value is not None:
+            redacted[key] = "***REDACTED***"
+            continue
+        redacted[key] = value
+    return redacted
+
+
+def _coerce_payload_types(payload: Dict[str, Any]) -> Dict[str, Any]:
+    normalized: Dict[str, Any] = {}
+
+    for key, value in payload.items():
+        # Webhook form-data may send empty strings for optional values.
+        if isinstance(value, str):
+            value = value.strip()
+            if value == "":
+                normalized[key] = None
+                continue
+
+        if key in BOOL_FIELDS:
+            normalized[key] = _to_bool(value)
+            continue
+
+        if key in INT_FIELDS and isinstance(value, str):
+            try:
+                normalized[key] = int(value)
+            except ValueError:
+                normalized[key] = value
+            continue
+
+        if key in FLOAT_FIELDS and isinstance(value, str):
+            try:
+                normalized[key] = float(value)
+            except ValueError:
+                normalized[key] = value
+            continue
+
+        normalized[key] = value
+
+    return normalized
+
+
+async def _extract_webhook_payload(request: Request) -> Dict[str, Any]:
+    content_type = (request.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
+
+    if content_type == "application/json":
+        try:
+            raw_payload = await request.json()
+        except JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
+        if not isinstance(raw_payload, dict):
+            raise HTTPException(status_code=400, detail="JSON payload must be an object")
+        return _coerce_payload_types(raw_payload)
+
+    if content_type in {"application/x-www-form-urlencoded", "multipart/form-data"}:
+        form_data = await request.form()
+        raw_payload = {k: v for k, v in form_data.items()}
+        return _coerce_payload_types(raw_payload)
+
+    raise HTTPException(
+        status_code=415,
+        detail="Unsupported Content-Type. Use application/json, application/x-www-form-urlencoded, or multipart/form-data.",
+    )
 
 
 @router.post("/anura/", response_model=AnuraWebhookResponse)
 @limiter.limit("30/minute")
 async def anura_webhook(
     request: Request,
-    payload: AnuraWebhookPayload,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     api_key: GlobalApiKey = Depends(get_api_key),
 ):
@@ -58,6 +162,23 @@ async def anura_webhook(
     https://kb.anura.com.ar/es/articles/2579414-variables-eventos-templetizados
     """
     try:
+        payload_dict = await _extract_webhook_payload(request)
+        logger.info(
+            "Anura webhook payload received content_type=%s payload=%s",
+            request.headers.get("content-type"),
+            _redact_payload_for_logs(payload_dict),
+        )
+
+        payload = AnuraWebhookPayload(**payload_dict)
+
+        if payload.hooktrigger != "END":
+            return AnuraWebhookResponse(
+                success=True,
+                message=f"Webhook received (ignored until END): {payload.hooktrigger}",
+                call_id=payload.cdrid,
+                recording_downloaded=False,
+            )
+
         # Process webhook
         result = process_anura_webhook(
             payload=payload,
