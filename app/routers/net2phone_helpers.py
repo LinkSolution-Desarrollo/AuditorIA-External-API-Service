@@ -52,29 +52,24 @@ async def get_mapping_guide(request: Request):
     """
     return {
         "campaign_mapping": {
+            "method": "NET2PHONE_DEFAULT_CAMPAIGN_ID",
+            "description": "Always uses NET2PHONE_DEFAULT_CAMPAIGN_ID env variable",
+            "example": {
+                "env_variable": "NET2PHONE_DEFAULT_CAMPAIGN_ID=1"
+            },
+            "maps_to": "campaign_id: 1"
+        },
+        "operator_mapping": {
             "method": "user.account_id",
-            "description": "net2phone uses user.account_id to identify campaigns",
+            "description": "net2phone uses user.account_id to identify operators/agents",
             "example": {
                 "user": {
                     "id": 1,
                     "account_id": 42,
                     "name": "Jane Doe"
                 },
-                "maps_to": "campaign_id: 42"
-            },
-            "fallback": "NET2PHONE_DEFAULT_CAMPAIGN_ID env variable"
-        },
-        "operator_mapping": {
-            "method": "user.id",
-            "description": "net2phone uses user.id to identify operators/agents",
-            "example": {
-                "user": {
-                    "id": 1,
-                    "name": "Jane Doe"
-                },
-                "maps_to": "operator_id: 1"
-            },
-            "fallback": "NET2PHONE_DEFAULT_OPERATOR_ID env variable"
+                "maps_to": "operator_id: 42"
+            }
         },
         "example_webhook": {
             "event": "call_completed",

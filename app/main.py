@@ -7,7 +7,7 @@ from slowapi.errors import RateLimitExceeded
 from app.routers import (
     oauth_router,
     upload_router, tasks_router, chat_router, campaigns_router,
-    webhooks_router, anura_helpers_router, test_utils_router,
+    webhooks_router, anura_helpers_router, net2phone_helpers_router, test_utils_router,
     tags_router, speaker_analysis_router, agent_identification_router,
     audit_router, reports_router,
 )

@@ -392,14 +392,12 @@ async def get_net2phone_cheatsheet():
             "timestamp": "x-net2phone-timestamp header"
         },
         "campaign_mapping": {
-            "method": "user.account_id",
-            "example": "user.account_id: 42 → campaign_id: 42",
-            "fallback": "NET2PHONE_DEFAULT_CAMPAIGN_ID env variable"
+            "method": "NET2PHONE_DEFAULT_CAMPAIGN_ID",
+            "example": "Always uses NET2PHONE_DEFAULT_CAMPAIGN_ID env variable"
         },
         "operator_mapping": {
-            "method": "user.id",
-            "example": "user.id: 1 → operator_id: 1",
-            "fallback": "NET2PHONE_DEFAULT_OPERATOR_ID env variable"
+            "method": "user.account_id",
+            "example": "user.account_id: 42 → operator_id: 42"
         },
         "supported_events": {
             "call_completed": "Call ended (downloads recording + creates Task)",

@@ -1,11 +1,11 @@
 """
-Router for Anura webhook integration.
+Router for Anura and net2phone webhook integrations.
 """
 import logging
 from json import JSONDecodeError
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Request, Depends, HTTPException
+from fastapi import APIRouter, Request, Depends, HTTPException, BackgroundTasks
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
@@ -14,8 +14,10 @@ from app.core.limiter import limiter
 from app.middleware.auth import get_api_key
 from app.models import GlobalApiKey
 from app.schemas.anura import AnuraWebhookPayload, AnuraWebhookResponse
-from app.schemas.call_event import CallEvent
+from app.schemas.net2phone import Net2PhoneWebhookPayload, Net2PhoneWebhookResponse
 from app.services.anura_service import process_anura_webhook, AnuraIntegrationError
+from app.services.net2phone_service import process_net2phone_webhook, verify_webhook_signature, Net2PhoneIntegrationError
+from app.core.config import get_settings
 
 router = APIRouter(
     prefix="/webhook",

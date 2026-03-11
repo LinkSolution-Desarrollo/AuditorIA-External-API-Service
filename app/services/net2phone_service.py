@@ -65,61 +65,52 @@ def verify_webhook_signature(
 
 
 def extract_campaign_id_from_user(
-    user_account_id: Optional[int],
+    user_id: Optional[int],
     db: Session,
     default_campaign_id: Optional[int] = None
 ) -> Optional[int]:
     """
-    Extract campaign_id from user account_id.
+    Extract campaign_id from user.id or use default.
     
-    Since net2phone doesn't have accounttags like Anura,
-    we map user.account_id to campaign_id.
+    Since net2phone uses user.account_id for operator mapping,
+    we use user.id for campaign mapping if available,
+    otherwise use default_campaign_id.
     
     Args:
-        user_account_id: Account ID from user object
+        user_id: User ID from net2phone
         db: Database session
         default_campaign_id: Default campaign fallback
         
     Returns:
         Campaign ID or None
     """
-    if user_account_id:
-        # Try to find campaign with matching account_id
+    if user_id:
+        # Try to find campaign with matching user_id
         campaign = db.query(Campaign).filter(
-            Campaign.campaign_id == user_account_id
+            Campaign.campaign_id == user_id
         ).first()
         
         if campaign:
-            return user_account_id
+            return user_id
     
     return default_campaign_id
 
 
 def extract_operator_id_from_user(
-    user_id: Optional[int],
-    user_name: Optional[str]
+    user_account_id: Optional[int]
 ) -> Optional[int]:
     """
-    Extract operator_id from user information.
+    Extract operator_id from user.account_id.
+    
+    net2phone uses user.account_id to identify operators/agents.
     
     Args:
-        user_id: User ID from net2phone
-        user_name: User name
+        user_account_id: Account ID from user object
         
     Returns:
         Operator ID as integer or None
     """
-    if user_id:
-        return user_id
-    
-    # Fallback: try to extract number from name
-    if user_name:
-        import re
-        numbers = re.findall(r'\d+', user_name)
-        if numbers:
-            return int(numbers[0])
-    
-    return None
+    return user_account_id
 
 
 def download_recording(recording_url: str) -> Tuple[bytes, str]:
@@ -218,20 +209,15 @@ def process_net2phone_webhook(
         if payload.duration:
             call_end = call_start + timedelta(seconds=payload.duration)
         
-        # Extract campaign_id from user.account_id
+        # Extract campaign_id - always use default
         campaign_id = extract_campaign_id_from_user(
-            payload.user.account_id if payload.user else None,
-            db,
             default_campaign_id
         )
         
-        # Extract operator_id from user.id
+        # Extract operator_id from user.account_id
         operator_id = extract_operator_id_from_user(
-            payload.user.id if payload.user else None,
-            payload.user.name if payload.user else None
+            payload.user.account_id if payload.user else None
         )
-        if not operator_id:
-            operator_id = default_operator_id
         
         # Generate username from API key
         username = "net2phone_webhook"

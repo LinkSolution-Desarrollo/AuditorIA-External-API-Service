@@ -33,7 +33,9 @@ This module enables AuditorIA to receive webhooks from net2phone cloud PBX and a
 
 **Authentication:**
 - Add header: `X-API-Key: {YOUR_AUDITORIA_API_KEY}`
-- Signature verification enabled (HMAC-SHA256)
+- Headers for signature verification:
+  - `x-net2phone-signature`: HMAC-SHA256 signature
+  - `x-net2phone-timestamp`: Timestamp of the request (ISO 8601 format)
 
 ### 2. AuditorIA Configuration
 
@@ -97,9 +99,9 @@ NET2PHONE_WEBHOOK_SECRET=your-secret-key  # For HMAC signature verification
 | `direction` | string | Call direction: inbound or outbound |
 | `originating_number` | string | Originating phone number |
 | `dialed_number` | string | Dialed phone number |
-| `user.id` | integer | User/Agent ID |
+| `user.id` | integer | User ID (not used in mapping) |
 | `user.name` | string | User/Agent name |
-| `user.account_id` | integer | Account ID (maps to campaign_id) |
+| `user.account_id` | integer | Account ID (maps to operator_id) |
 | `recording_url` | string | URL to download recording (if available) |
 
 ## Campaign Mapping
@@ -230,29 +232,24 @@ Get complete guide for mapping net2phone data to AuditorIA.
 ```json
 {
   "campaign_mapping": {
+    "method": "NET2PHONE_DEFAULT_CAMPAIGN_ID",
+    "description": "Always uses NET2PHONE_DEFAULT_CAMPAIGN_ID env variable",
+    "example": {
+      "env_variable": "NET2PHONE_DEFAULT_CAMPAIGN_ID=1"
+    },
+    "maps_to": "campaign_id: 1"
+  },
+  "operator_mapping": {
     "method": "user.account_id",
-    "description": "net2phone uses user.account_id to identify campaigns",
+    "description": "net2phone uses user.account_id to identify operators/agents",
     "example": {
       "user": {
         "id": 1,
         "account_id": 42,
         "name": "Jane Doe"
       },
-      "maps_to": "campaign_id: 42"
-    },
-    "fallback": "NET2PHONE_DEFAULT_CAMPAIGN_ID env variable"
-  },
-  "operator_mapping": {
-    "method": "user.id",
-    "description": "net2phone uses user.id to identify operators/agents",
-    "example": {
-      "user": {
-        "id": 1,
-        "name": "Jane Doe"
-      },
-      "maps_to": "operator_id: 1"
-    },
-    "fallback": "NET2PHONE_DEFAULT_OPERATOR_ID env variable"
+      "maps_to": "operator_id: 42"
+    }
   }
 }
 ```
