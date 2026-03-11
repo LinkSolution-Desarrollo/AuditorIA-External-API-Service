@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 
 from app.models import Task, CallLog, Campaign, GlobalApiKey
 from app.schemas.anura import AnuraWebhookPayload
+from app.schemas.call_event import CallEvent
 from app.schemas.transcription import TranscriptionConfig
 from app.services.s3_service import upload_fileobj_to_s3
 from app.core.config import get_settings
@@ -148,7 +149,8 @@ def process_anura_webhook(
     db: Session,
     default_campaign_id: Optional[int] = None,
     default_operator_id: Optional[int] = None,
-    api_key_record: Optional[GlobalApiKey] = None
+    api_key_record: Optional[GlobalApiKey] = None,
+    call_event: Optional[CallEvent] = None,
 ) -> dict:
     """
     Process Anura webhook and create transcription task if applicable.
@@ -177,19 +179,13 @@ def process_anura_webhook(
     }
     
     try:
-        # Parse call start time
-        try:
-            call_start = datetime.strptime(payload.dialtime, "%Y-%m-%d %H:%M:%S")
-        except ValueError:
-            try:
-                call_start = datetime.strptime(payload.dialtime, "%Y-%m-%dT%H:%M:%S")
-            except ValueError:
-                raise AnuraIntegrationError(f"Invalid dialtime format: {payload.dialtime}")
-        
-        # Calculate call end time
+        if not call_event:
+            call_event = CallEvent.from_anura_payload(payload.dict())
+
+        call_start = call_event.call_started_at
         call_end = None
-        if payload.duration:
-            call_end = call_start + timedelta(seconds=payload.duration)
+        if call_event.duration_seconds is not None:
+            call_end = call_start + timedelta(seconds=call_event.duration_seconds)
         
         # Extract campaign_id
         campaign_id = extract_campaign_id_from_tags(payload.accounttags)
@@ -227,27 +223,26 @@ def process_anura_webhook(
             # Generate provisional filename (file_name is PK, cannot be None)
             provisional_filename = f"pending_{payload.cdrid}_{uuid.uuid4().hex[:8]}.tmp"
             call_log = CallLog(
-                call_id=payload.cdrid,
-                file_name=provisional_filename,  # Will be updated when recording downloads
-                date=call_start,
-                campaign_id=campaign_id or 1,  # Must have campaign_id (NOT NULL)
-                operator_id=operator_id or 1,  # Must have operator_id (NOT NULL)
-                direction=payload.direction,
-                call_start_date=call_start,
-                call_end_date=call_end,
-                sectot=payload.duration,
-                ani_tel=payload.calling,
-                url=payload.audio_file_mp3,
-                log=f"Received Anura webhook: {payload.hooktrigger}",
-                upload_by=username,
-                created_at=datetime.utcnow()
-            )
+                    call_id=payload.cdrid,
+                    file_name=provisional_filename,
+                    date=call_start,
+                    campaign_id=campaign_id or 1,
+                    operator_id=operator_id or 1,
+                    direction=call_event.direction,
+                    call_start_date=call_start,
+                    call_end_date=call_end,
+                    sectot=int(call_event.duration_seconds),
+                    ani_tel=call_event.phone_from,
+                    url=payload.audio_file_mp3,
+                    log=f"Received Anura webhook: {call_event.call_status}",
+                    upload_by=username,
+                    created_at=datetime.utcnow()
+                )
             db.add(call_log)
             result['call_log_created'] = True
         else:
-            # Update existing log
             call_log.call_end_date = call_end
-            call_log.sectot = payload.duration
+            call_log.sectot = int(call_event.duration_seconds)
             if payload.audio_file_mp3:
                 call_log.url = payload.audio_file_mp3
         

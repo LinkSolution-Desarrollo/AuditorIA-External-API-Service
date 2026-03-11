@@ -1,19 +1,16 @@
-"""
-Pydantic schemas for Anura webhooks.
-"""
-from pydantic import BaseModel, Field, validator
-from typing import Optional, Any
+"""Pydantic schemas for Anura webhooks."""
+import uuid
 from datetime import datetime
+from typing import Optional, Any, Dict
+
+from pydantic import BaseModel, Field, validator
+
+from app.utils.datetime_utils import parse_anura_datetime
 
 
 class AnuraWebhookPayload(BaseModel):
-    """
-    Schema for Anura webhook payloads.
-    Matches the variables documented in:
-    https://kb.anura.com.ar/es/articles/2579414-variables-eventos-templetizados
-    """
-    # Hook/Event metadata
-    hooktrigger: str = Field(..., description="Trigger event: START, TALK, END")
+    """Schema for Anura webhook payloads."""
+    hooktrigger: str = Field("END", description="Trigger event: START, TALK, END")
     hookid: Optional[int] = None
     hookname: Optional[str] = None
     hookdirection: Optional[str] = None
@@ -21,23 +18,23 @@ class AnuraWebhookPayload(BaseModel):
     hooktemplatename: Optional[str] = None
     hooktags: Optional[str] = None
 
-    # Call metadata
-    cdrid: str = Field(..., description="Unique call ID")
-    dialtime: str = Field(..., description="Call start datetime")
-    direction: str = Field(..., description="Direction: inbound/outbound")
+    cdrid: str = Field(default_factory=lambda: uuid.uuid4().hex, description="Unique call ID")
+    dialtime: str = Field(
+        default_factory=lambda: datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+        description="Call start datetime",
+    )
+    direction: str = Field("inbound", description="Direction: inbound/outbound")
     calling: Optional[str] = Field(None, description="Origin phone number")
     callingname: Optional[str] = None
     called: Optional[str] = Field(None, description="Destination phone number")
     calledname: Optional[str] = None
     status: Optional[str] = None
 
-    # Duration and pricing
     duration: Optional[int] = Field(None, description="Total duration in seconds")
     billseconds: Optional[int] = None
     price: Optional[float] = None
 
-    # Recording
-    wasrecorded: Optional[bool] = Field(None, description="Whether call was recorded")
+    wasrecorded: bool = Field(False, description="Whether call was recorded")
     audio_play_mp3: Optional[str] = Field(None, description="URL to play recording (MP3)")
     audio_play_ogg: Optional[str] = None
     audio_play_wav: Optional[str] = None
@@ -45,7 +42,6 @@ class AnuraWebhookPayload(BaseModel):
     audio_file_ogg: Optional[str] = None
     audio_file_wav: Optional[str] = None
 
-    # Queue/Agent information
     queuename: Optional[str] = None
     queuestatus: Optional[str] = None
     queuetotaltime: Optional[int] = None
@@ -58,60 +54,44 @@ class AnuraWebhookPayload(BaseModel):
     answerterminal: Optional[str] = None
     answerextension: Optional[str] = None
 
-    # Account/Tenant information
     tenantid: Optional[int] = None
     accountid: Optional[int] = None
     accountname: Optional[str] = None
     accountextension: Optional[str] = None
     accounttags: Optional[str] = Field(None, description="Campaign/tags for mapping")
 
-    # Click2Call custom variables
     custom1: Optional[str] = None
     custom2: Optional[str] = None
     custom3: Optional[str] = None
 
-    # Terminal info
     terminalid: Optional[int] = None
     terminalname: Optional[str] = None
     terminalaccount: Optional[str] = None
     terminalstate: Optional[str] = None
 
-    # Additional fields
     lastaction: Optional[str] = None
 
-    @validator('hooktrigger')
-    def validate_trigger(cls, v):
-        """Validate that trigger is a known event type."""
-        valid_triggers = {'START', 'TALK', 'END'}
-        if v.upper() not in valid_triggers:
-            raise ValueError(f"Invalid trigger: {v}. Must be one of {valid_triggers}")
+    @validator("hooktrigger")
+    def validate_trigger(cls, v: str) -> str:
+        valid = {"START", "TALK", "END"}
+        if v.upper() not in valid:
+            raise ValueError(f"Invalid trigger: {v}. Must be one of {valid}")
         return v.upper()
 
-    @validator('dialtime')
-    def parse_dialtime(cls, v):
-        """Validate dialtime format."""
-        try:
-            # Try to parse datetime
-            datetime.strptime(v, "%Y-%m-%d %H:%M:%S")
-            return v
-        except ValueError:
-            # Try alternative formats
-            for fmt in ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%d/%m/%Y %H:%M:%S"]:
-                try:
-                    datetime.strptime(v, fmt)
-                    return v
-                except ValueError:
-                    continue
-            raise ValueError(f"Invalid datetime format: {v}")
+    @validator("dialtime")
+    def parse_dialtime(cls, v: str) -> str:
+        dt = parse_anura_datetime(v)
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
 
     class Config:
-        extra = "allow"  # Allow extra fields from Anura
+        extra = "allow"
 
 
 class AnuraWebhookResponse(BaseModel):
-    """Response schema for Anura webhook."""
     success: bool
     message: str
     call_id: Optional[str] = None
     task_id: Optional[str] = None
     recording_downloaded: bool = False
+    payload: Optional[Dict[str, Any]] = None
+    call_event: Optional[Dict[str, Any]] = None
