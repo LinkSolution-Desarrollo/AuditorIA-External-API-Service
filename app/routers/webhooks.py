@@ -303,7 +303,6 @@ async def net2phone_webhook(
     request: Request,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    api_key: GlobalApiKey = Depends(get_api_key),
 ):
     """
     Receive webhooks from net2phone.
@@ -362,7 +361,6 @@ async def net2phone_webhook(
             payload=payload,
             db=db,
             default_campaign_id=settings.NET2PHONE_DEFAULT_CAMPAIGN_ID,
-            api_key_record=api_key
         )
         
         # Build response
