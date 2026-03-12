@@ -19,7 +19,6 @@ langchain-core
 openai
 # OAuth / JWT
 python-jose[cryptography]
-argon2-cffi
 # Testing
 pytest
 httpx
