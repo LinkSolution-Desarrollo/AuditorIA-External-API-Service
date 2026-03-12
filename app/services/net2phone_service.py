@@ -53,30 +53,85 @@ def verify_webhook_signature(
     Returns:
         True if signature is valid and timestamp is within acceptable window
     """
+    logger.debug("="*60)
+    logger.debug("Starting webhook signature verification")
+    logger.debug("Received signature: %s", signature)
+    logger.debug("Received timestamp: %s", timestamp)
+    logger.debug("Secret configured: %s (length: %d)", "YES" if secret else "NO", len(secret) if secret else 0)
+    logger.debug("Raw body length: %d bytes", len(raw_body))
+    logger.debug("Raw body (first 200 chars): %s", raw_body[:200])
+    
     try:
         # Validate timestamp format and window
         try:
-            webhook_time = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+            # Handle timestamps with 7-digit fractional seconds (e.g., 2026-03-12T20:31:36.3502036Z)
+            # Python's fromisoformat only supports up to 6 digits (microseconds)
+            timestamp_cleaned = timestamp.replace('Z', '+00:00')
+            
+            # If timestamp has 7+ digits after decimal, truncate to 6
+            if '.' in timestamp_cleaned:
+                parts = timestamp_cleaned.split('.')
+                if len(parts) == 2:
+                    fractional = parts[1]
+                    # Extract only digits before timezone
+                    if '+' in fractional:
+                        digits, tz = fractional.split('+', 1)
+                        if len(digits) > 6:
+                            # Truncate to 6 digits
+                            timestamp_cleaned = f"{parts[0]}.{digits[:6]}+{tz}"
+                            logger.debug("Truncated fractional seconds from %d to 6 digits", len(digits))
+                    elif '-' in fractional:
+                        digits, tz = fractional.split('-', 1)
+                        if len(digits) > 6:
+                            timestamp_cleaned = f"{parts[0]}.{digits[:6]}-{tz}"
+                            logger.debug("Truncated fractional seconds from %d to 6 digits", len(digits))
+                    elif len(fractional) > 6:
+                        timestamp_cleaned = f"{parts[0]}.{fractional[:6]}"
+                        logger.debug("Truncated fractional seconds from %d to 6 digits", len(fractional))
+            
+            logger.debug("Cleaned timestamp: %s", timestamp_cleaned)
+            webhook_time = datetime.fromisoformat(timestamp_cleaned)
+            logger.debug("Parsed webhook_time: %s", webhook_time)
         except (ValueError, AttributeError) as e:
+            logger.error("Failed to parse timestamp '%s': %s", timestamp, e)
             return False
         
         # Check timestamp is within ±5 minutes of current UTC time
         current_utc = datetime.utcnow()
         time_difference = (current_utc - webhook_time.replace(tzinfo=None)).total_seconds()
         
+        logger.debug("Current UTC time: %s", current_utc)
+        logger.debug("Time difference: %f seconds", time_difference)
+        
         if abs(time_difference) > 300:
+            logger.warning("Timestamp validation failed: difference of %f seconds exceeds 300 seconds", abs(time_difference))
             return False
         
-        # Compute HMAC-SHA256 over raw body using shared secret
+        logger.debug("Timestamp validation passed")
+        
+        # Compute HMAC-SHA256 over timestamp:body using shared secret
+        # According to net2phone docs: signature = HMAC-SHA256(secret, timestamp + ":" + body)
+        payload_to_sign = f"{timestamp}:{raw_body.decode('utf-8')}"
+        logger.debug("Payload to sign: %s", payload_to_sign[:200])
+        
         hmac_hash = hmac.new(
             secret.encode('utf-8') if secret else b'',
-            raw_body,
+            payload_to_sign.encode('utf-8'),
             hashlib.sha256
         ).hexdigest()
         
+        logger.debug("Computed HMAC hash: %s", hmac_hash)
+        logger.debug("Expected signature: %s", signature)
+        logger.debug("Signature match: %s", hmac.compare_digest(hmac_hash, signature))
+        
         # Compare with provided signature using constant-time comparison
-        return hmac.compare_digest(hmac_hash, signature)
-    except Exception:
+        result = hmac.compare_digest(hmac_hash, signature)
+        logger.debug("Signature verification result: %s", "VALID" if result else "INVALID")
+        logger.debug("="*60)
+        return result
+    except Exception as e:
+        logger.exception("Exception during signature verification: %s", e)
+        logger.debug("="*60)
         return False
 
 
