@@ -7,6 +7,7 @@ from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
 import random
 import string
+import uuid
 
 router = APIRouter(
     prefix="/test",
@@ -416,6 +417,6 @@ async def get_net2phone_cheatsheet():
             "no_operator_found": "Check user.id exists or set NET2PHONE_DEFAULT_OPERATOR_ID",
             "recording_download_failed": "Verify recording_url is accessible from server",
             "webhook_not_received": "Test health endpoint and check firewall/rate limiting",
-            "signature_verification_failed": "Check NET2PHONE_WEBHOOK_SECRET env variable"
+            "signature_verification_failed": "Check NET2PHONE_SECRET env variable"
         }
     }

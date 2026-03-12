@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
+from argon2 import PasswordHasher
 from fastapi import HTTPException, Request, Security
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
@@ -54,29 +55,31 @@ def _load_key_by_id(key_id: int) -> ApiKeyData:
 
 def _load_key_by_raw_value(raw_key: str) -> Optional[ApiKeyData]:
     """Carga un API key desde la DB por su valor crudo (hashing) y actualiza last_used_at."""
-    import hashlib
-    hashed_key = hashlib.sha256(raw_key.encode()).hexdigest()
+    ph = PasswordHasher()
     db: Session = SessionLocal()
     try:
-        key_record = db.query(GlobalApiKey).filter(
-            GlobalApiKey.hashed_key == hashed_key,
+        key_records = db.query(GlobalApiKey).filter(
             GlobalApiKey.is_active == True,
-        ).first()
+        ).all()
 
-        if not key_record:
-            return None
+        for key_record in key_records:
+            try:
+                if ph.verify(key_record.hashed_key, raw_key):
+                    key_record.last_used_at = datetime.utcnow()
+                    data = ApiKeyData(
+                        id=key_record.id,
+                        name=key_record.name,
+                        prefix=key_record.prefix,
+                        is_active=key_record.is_active,
+                        created_at=key_record.created_at,
+                        last_used_at=key_record.last_used_at,
+                    )
+                    db.commit()
+                    return data
+            except Exception:
+                continue
 
-        key_record.last_used_at = datetime.utcnow()
-        data = ApiKeyData(
-            id=key_record.id,
-            name=key_record.name,
-            prefix=key_record.prefix,
-            is_active=key_record.is_active,
-            created_at=key_record.created_at,
-            last_used_at=key_record.last_used_at,
-        )
-        db.commit()
-        return data
+        return None
     finally:
         db.close()
 

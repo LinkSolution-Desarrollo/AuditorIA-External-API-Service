@@ -48,17 +48,14 @@ def verify_webhook_signature(
         True if signature is valid
     """
     try:
-        # Concatenate signature:raw_body
-        message = f"{signature}:{raw_body.decode('utf-8')}"
-        
-        # Compute HMAC-SHA256
+        # Compute HMAC-SHA256 over raw body using shared secret
         hmac_hash = hmac.new(
-            timestamp.encode('utf-8'),
-            message.encode('utf-8'),
+            secret.encode('utf-8') if secret else b'',
+            raw_body,
             hashlib.sha256
         ).hexdigest()
         
-        # Compare with provided signature
+        # Compare with provided signature using constant-time comparison
         return hmac.compare_digest(hmac_hash, signature)
     except Exception:
         return False
@@ -285,12 +282,13 @@ def process_net2phone_webhook(
                 try:
                     # Upload to S3
                     settings = get_settings()
-                    upload_success = upload_fileobj_to_s3(
-                        open(tmp_path, "rb"),
-                        settings.S3_BUCKET,
-                        object_name,
-                        content_type=content_type
-                    )
+                    with open(tmp_path, "rb") as fh:
+                        upload_success = upload_fileobj_to_s3(
+                            fh,
+                            settings.S3_BUCKET,
+                            object_name,
+                            content_type=content_type
+                        )
                     
                     if not upload_success:
                         raise Net2PhoneIntegrationError("Failed to upload to S3")

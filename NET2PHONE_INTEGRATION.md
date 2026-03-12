@@ -53,7 +53,7 @@ S3_BUCKET=audios
 # Optional: Default values for webhooks
 NET2PHONE_DEFAULT_CAMPAIGN_ID=1  # Default campaign if user.account_id not found
 NET2PHONE_DEFAULT_OPERATOR_ID=1  # Default operator if user.id not detected
-NET2PHONE_WEBHOOK_SECRET=your-secret-key  # For HMAC signature verification
+NET2PHONE_SECRET=your-secret-key  # For HMAC signature verification
 ```
 
 #### Create API Key
@@ -347,7 +347,7 @@ Get integration statistics.
 
 ### Signature verification failed
 
-1. Verify `NET2PHONE_WEBHOOK_SECRET` is correct
+1. Verify `NET2PHONE_SECRET` is correct
 2. Check `x-net2phone-signature` and `x-net2phone-timestamp` headers
 3. Ensure UTF-8 encoding is used
 4. Verify timestamp is not too old (replay attack protection)
@@ -429,9 +429,8 @@ net2phone uses HMAC-SHA256 for webhook signature verification.
 ### Verification Process
 
 1. Retrieve raw request body
-2. Concatenate: `{signature}:{raw_body}`
-3. Compute HMAC-SHA256 using `x-net2phone-timestamp` as key
-4. Compare with `x-net2phone-signature` header
+2. Compute HMAC-SHA256 over raw body using shared secret key
+3. Compare result with `x-net2phone-signature` header using constant-time comparison
 
 ### Example
 
@@ -441,16 +440,19 @@ import hashlib
 
 raw_body = b'{"event":"call_completed",...}'
 signature = "fe4aad021345e9c6506e163ba62aea8a0f15047712618482a2423cc008dd2fb2"
-timestamp = "2021-10-27T08:58:21.66Z"
+secret = "your-shared-secret-key"
 
-message = f"{signature}:{raw_body.decode('utf-8')}"
+# Compute HMAC-SHA256 over raw body using shared secret
 hmac_hash = hmac.new(
-    timestamp.encode('utf-8'),
-    message.encode('utf-8'),
+    secret.encode('utf-8'),
+    raw_body,
     hashlib.sha256
 ).hexdigest()
 
-# Compare hmac_hash with signature
+# Constant-time comparison to prevent timing attacks
+if hmac.compare_digest(hmac_hash, signature):
+    # Signature is valid
+    pass
 ```
 
 ## Support

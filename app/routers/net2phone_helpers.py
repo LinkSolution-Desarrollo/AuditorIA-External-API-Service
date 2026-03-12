@@ -3,6 +3,9 @@ Additional endpoints for net2phone integration helpers.
 """
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
+from sqlalchemy import func, text
+from pydantic import BaseModel
+from typing import Optional
 
 from app.core.database import get_db
 from app.core.limiter import limiter
@@ -96,11 +99,16 @@ async def get_mapping_guide(request: Request):
     }
 
 
+class ValidateMappingRequest(BaseModel):
+    user_id: Optional[int] = None
+    account_id: Optional[int] = None
+
+
 @router.post("/validate-mapping")
 @limiter.limit("20/minute")
 async def validate_mapping(
     request: Request,
-    payload: dict,
+    payload: ValidateMappingRequest,
     db: Session = Depends(get_db),
     api_key: GlobalApiKey = Depends(get_api_key),
 ):
@@ -113,8 +121,8 @@ async def validate_mapping(
       "account_id": 42
     }
     """
-    user_id = payload.get('user_id')
-    account_id = payload.get('account_id')
+    user_id = payload.user_id
+    account_id = payload.account_id
     
     result = {
         "valid": True,
@@ -156,29 +164,45 @@ async def get_integration_stats(
     """
     Get statistics about net2phone integration activity.
     """
-    # Get call logs uploaded by net2phone
-    net2phone_logs = db.query(CallLog).filter(
-        CallLog.upload_by.like('net2phone%')
-    ).all()
-    
-    # Get tasks created from net2phone webhooks
-    net2phone_tasks = db.query(Task).filter(
-        Task.task_params.isnot(None)
-    ).all()
-    
-    # Filter tasks created by net2phone
-    net2phone_tasks = [t for t in net2phone_tasks if t.task_params and t.task_params.get('username', '').startswith('net2phone')]
-    
-    # Recent activity (last 24h)
     yesterday = datetime.utcnow() - timedelta(days=1)
-    recent_logs = [log for log in net2phone_logs if log.created_at and log.created_at > yesterday]
+    
+    # Total webhooks received - SQL COUNT
+    total_webhooks = db.query(func.count(CallLog.file_name)).filter(
+        CallLog.upload_by.like('net2phone%')
+    ).scalar()
+    
+    # Total recordings downloaded - SQL COUNT with file_name filter
+    total_recordings = db.query(func.count(CallLog.file_name)).filter(
+        CallLog.upload_by.like('net2phone%'),
+        CallLog.file_name.isnot(None)
+    ).scalar()
+    
+    # Recent webhooks (last 24h) - SQL COUNT with date filter
+    recent_webhooks = db.query(func.count(CallLog.file_name)).filter(
+        CallLog.upload_by.like('net2phone%'),
+        CallLog.created_at > yesterday
+    ).scalar()
+    
+    # Recent recordings (last 24h) - SQL COUNT with date and file_name filters
+    recent_recordings = db.query(func.count(CallLog.file_name)).filter(
+        CallLog.upload_by.like('net2phone%'),
+        CallLog.file_name.isnot(None),
+        CallLog.created_at > yesterday
+    ).scalar()
+    
+    # Total tasks created by net2phone - SQL COUNT with JSON filter
+    # Using text() for JSON path extraction for cross-database compatibility
+    total_tasks = db.query(func.count(Task.id)).filter(
+        Task.task_params.isnot(None),
+        text("json_extract(task_params, '$.username') LIKE 'net2phone%'")
+    ).scalar()
     
     return {
-        "total_webhooks_received": len(net2phone_logs),
-        "total_recordings_downloaded": len([log for log in net2phone_logs if log.file_name]),
-        "total_tasks_created": len(net2phone_tasks),
+        "total_webhooks_received": total_webhooks or 0,
+        "total_recordings_downloaded": total_recordings or 0,
+        "total_tasks_created": total_tasks or 0,
         "recent_activity_24h": {
-            "webhooks": len(recent_logs),
-            "recordings": len([log for log in recent_logs if log.file_name])
+            "webhooks": recent_webhooks or 0,
+            "recordings": recent_recordings or 0
         }
     }

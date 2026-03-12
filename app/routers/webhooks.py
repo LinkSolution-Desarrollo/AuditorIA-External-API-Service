@@ -1,6 +1,7 @@
 """
 Router for Anura and net2phone webhook integrations.
 """
+import json
 import logging
 from json import JSONDecodeError
 from typing import Any, Dict, Optional
@@ -336,7 +337,7 @@ async def net2phone_webhook(
     }
     """
     try:
-        # Get raw body for signature verification
+        # Get raw body for signature verification and JSON parsing
         raw_body = await request.body()
         
         # Verify signature if present
@@ -344,7 +345,7 @@ async def net2phone_webhook(
         timestamp = request.headers.get('x-net2phone-timestamp')
         
         if signature and timestamp:
-            secret = getattr(settings, 'NET2PHONE_WEBHOOK_SECRET', '')
+            secret = settings.NET2PHONE_SECRET
             
             if secret and not verify_webhook_signature(raw_body, signature, timestamp, secret):
                 raise HTTPException(
@@ -352,8 +353,8 @@ async def net2phone_webhook(
                     detail="Invalid webhook signature"
                 )
         
-        # Parse payload
-        payload_dict = await request.json()
+        # Parse payload from raw_body to avoid duplicate body reads
+        payload_dict = json.loads(raw_body.decode('utf-8'))
         payload = Net2PhoneWebhookPayload(**payload_dict)
         
         # Process webhook
