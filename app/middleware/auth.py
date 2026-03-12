@@ -52,6 +52,35 @@ def _load_key_by_id(key_id: int) -> ApiKeyData:
         db.close()
 
 
+def _load_key_by_raw_value(raw_key: str) -> Optional[ApiKeyData]:
+    """Carga un API key desde la DB por su valor crudo (hashing) y actualiza last_used_at."""
+    import hashlib
+    hashed_key = hashlib.sha256(raw_key.encode()).hexdigest()
+    db: Session = SessionLocal()
+    try:
+        key_record = db.query(GlobalApiKey).filter(
+            GlobalApiKey.hashed_key == hashed_key,
+            GlobalApiKey.is_active == True,
+        ).first()
+
+        if not key_record:
+            return None
+
+        key_record.last_used_at = datetime.utcnow()
+        data = ApiKeyData(
+            id=key_record.id,
+            name=key_record.name,
+            prefix=key_record.prefix,
+            is_active=key_record.is_active,
+            created_at=key_record.created_at,
+            last_used_at=key_record.last_used_at,
+        )
+        db.commit()
+        return data
+    finally:
+        db.close()
+
+
 def _settings_auth_header(issuer: str) -> dict:
     return {"WWW-Authenticate": f'Bearer realm="{issuer}", resource_metadata="{issuer}/.well-known/oauth-authorization-server"'}
 
@@ -62,8 +91,9 @@ async def get_api_key(
 ) -> ApiKeyData:
     settings = get_settings()
 
-    # 1. Intentar Bearer JWT (emitido por /oauth/token)
+    # 1. Intentar Bearer token (JWT o API Key)
     if bearer and bearer.credentials:
+        # 1a. Intentar como JWT (emitido por /oauth/token)
         try:
             payload = jwt.decode(
                 bearer.credentials,
@@ -74,6 +104,12 @@ async def get_api_key(
             key_id = int(payload["sub"])
             return _load_key_by_id(key_id)
         except (JWTError, ValueError, KeyError):
+            # 1b. Fallback: Intentar como Global API Key cruda (enviada en header Authorization)
+            key_data = _load_key_by_raw_value(bearer.credentials)
+            if key_data:
+                return key_data
+            
+            # Si no es ni JWT ni API Key válida
             raise HTTPException(
                 status_code=401,
                 detail="Invalid or expired token",
@@ -82,38 +118,11 @@ async def get_api_key(
 
     # 2. Fallback: X-API-Key header (compatibilidad hacia atrás)
     if api_key:
-        import hashlib
-        hashed_key = hashlib.sha256(api_key.encode()).hexdigest()
-        db: Session = SessionLocal()
-        try:
-            key_record = db.query(GlobalApiKey).filter(
-                GlobalApiKey.hashed_key == hashed_key,
-                GlobalApiKey.is_active == True,
-            ).first()
-
-            if not key_record:
-                raise HTTPException(status_code=403, detail="Invalid API Key")
-
-            key_id = key_record.id
-            key_name = key_record.name
-            key_prefix = key_record.prefix
-            key_is_active = key_record.is_active
-            key_created_at = key_record.created_at
-
-            key_record.last_used_at = datetime.utcnow()
-            key_last_used = key_record.last_used_at
-            db.commit()
-
-            return ApiKeyData(
-                id=key_id,
-                name=key_name,
-                prefix=key_prefix,
-                is_active=key_is_active,
-                created_at=key_created_at,
-                last_used_at=key_last_used,
-            )
-        finally:
-            db.close()
+        key_data = _load_key_by_raw_value(api_key)
+        if key_data:
+            return key_data
+        
+        raise HTTPException(status_code=403, detail="Invalid API Key")
 
     # 3. Sin credenciales → 401 con WWW-Authenticate para trigger OAuth
     raise HTTPException(

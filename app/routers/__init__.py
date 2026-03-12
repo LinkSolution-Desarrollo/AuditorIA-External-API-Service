@@ -5,6 +5,7 @@ from .chat import router as chat_router
 from .campaigns import router as campaigns_router
 from .webhooks import router as webhooks_router
 from .anura_helpers import router as anura_helpers_router
+from .net2phone_helpers import router as net2phone_helpers_router
 from .test_utils import router as test_utils_router
 from .tags import router as tags_router
 from .speaker_analysis import router as speaker_analysis_router

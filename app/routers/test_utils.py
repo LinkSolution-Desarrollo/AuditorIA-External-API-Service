@@ -7,6 +7,7 @@ from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
 import random
 import string
+import uuid
 
 router = APIRouter(
     prefix="/test",
@@ -250,5 +251,172 @@ async def get_anura_cheatsheet():
             "no_operator_found": "Check agent extension is numeric or set ANURA_DEFAULT_OPERATOR_ID",
             "recording_download_failed": "Verify audio_file_mp3 URL is accessible from server",
             "webhook_not_received": "Test health endpoint and check firewall/rate limiting"
+        }
+    }
+
+
+class Net2PhoneGenerateWebhookRequest(BaseModel):
+    """Request to generate test net2phone webhook payload."""
+    event: str = "call_completed"
+    user_id: Optional[int] = 1
+    account_id: Optional[int] = 42
+    has_recording: bool = True
+    direction: str = "inbound"
+    duration: Optional[int] = 120
+    phone_number: Optional[str] = "+5491167950079"
+
+
+def generate_net2phone_call_id() -> str:
+    """Generate random call ID in net2phone format."""
+    return str(uuid.uuid4()).replace('-', '')
+
+
+@router.post("/net2phone/generate-webhook")
+async def generate_net2phone_webhook(request: Net2PhoneGenerateWebhookRequest):
+    """
+    Generate a realistic test webhook payload for net2phone integration.
+    
+    This helps create test payloads that match net2phone's real format.
+    """
+    call_id = generate_net2phone_call_id()
+    event_id = str(uuid.uuid4())
+    timestamp = datetime.utcnow().isoformat() + "Z"
+    
+    webhook = {
+        "timestamp": timestamp,
+        "event": request.event,
+        "user": {
+            "id": request.user_id,
+            "name": f"Agent {request.user_id}",
+            "account_id": request.account_id
+        },
+        "duration": request.duration if request.event == "call_completed" else 0,
+        "direction": request.direction,
+        "originating_number": request.phone_number if request.direction == "inbound" else "201",
+        "user_name": f"Agent {request.user_id}",
+        "id": event_id,
+        "dialed_number": request.phone_number if request.direction == "outbound" else "201",
+        "call_source": "normal",
+        "call_id": call_id
+    }
+    
+    if request.has_recording and request.event == "call_completed":
+        webhook["recording_url"] = f"https://example.com/recordings/{call_id}.mp3"
+    
+    return webhook
+
+
+@router.get("/net2phone/scenarios")
+async def get_net2phone_test_scenarios():
+    """
+    Get predefined test scenarios for net2phone integration testing.
+    """
+    scenarios = {
+        "successful_inbound_call": {
+            "description": "Standard inbound call with recording",
+            "event": "call_completed",
+            "direction": "inbound",
+            "duration": 180,
+            "user_id": 1,
+            "account_id": 42,
+            "has_recording": True
+        },
+        "outbound_call": {
+            "description": "Outbound call made by agent",
+            "event": "call_completed",
+            "direction": "outbound",
+            "duration": 95,
+            "user_id": 2,
+            "account_id": 42,
+            "has_recording": True
+        },
+        "call_without_recording": {
+            "description": "Call without recording",
+            "event": "call_completed",
+            "direction": "inbound",
+            "duration": 45,
+            "user_id": 1,
+            "account_id": 42,
+            "has_recording": False
+        },
+        "missed_call": {
+            "description": "Missed call",
+            "event": "call_missed",
+            "direction": "inbound",
+            "duration": 0,
+            "user_id": None,
+            "account_id": 42,
+            "has_recording": False
+        },
+        "call_answered": {
+            "description": "Call answered (not completed yet)",
+            "event": "call_answered",
+            "direction": "inbound",
+            "duration": None,
+            "user_id": 1,
+            "account_id": 42,
+            "has_recording": False
+        },
+        "call_ringing": {
+            "description": "Call initiated (ringing)",
+            "event": "call_ringing",
+            "direction": "inbound",
+            "duration": None,
+            "user_id": 1,
+            "account_id": 42,
+            "has_recording": False
+        }
+    }
+    
+    return scenarios
+
+
+@router.get("/net2phone/cheatsheet")
+async def get_net2phone_cheatsheet():
+    """
+    Get a quick reference guide for net2phone integration.
+    """
+    return {
+        "endpoints": {
+            "webhook": "POST /webhook/net2phone/",
+            "health": "GET /webhook/net2phone/health",
+            "test_validation": "POST /webhook/net2phone/test",
+            "generate_payload": "POST /test/net2phone/generate-webhook",
+            "list_campaigns": "GET /net2phone/campaigns",
+            "mapping_guide": "GET /net2phone/mapping-guide",
+            "validate_mapping": "POST /net2phone/validate-mapping",
+            "stats": "GET /net2phone/stats"
+        },
+        "authentication": {
+            "api_key": "X-API-Key header (same as upload endpoint)",
+            "signature": "x-net2phone-signature header (HMAC-SHA256)",
+            "timestamp": "x-net2phone-timestamp header"
+        },
+        "campaign_mapping": {
+            "method": "NET2PHONE_DEFAULT_CAMPAIGN_ID",
+            "example": "Always uses NET2PHONE_DEFAULT_CAMPAIGN_ID env variable"
+        },
+        "operator_mapping": {
+            "method": "user.account_id",
+            "example": "user.account_id: 42 → operator_id: 42"
+        },
+        "supported_events": {
+            "call_completed": "Call ended (downloads recording + creates Task)",
+            "call_answered": "Call answered (updates CallLog)",
+            "call_ringing": "Call initiated (creates CallLog)",
+            "call_missed": "Call missed (logs missed call)",
+            "call_recorded": "Recording available"
+        },
+        "example_curl": {
+            "webhook": 'curl -X POST "http://localhost:8001/webhook/net2phone/" \\\n  -H "X-API-Key: YOUR_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d \'{"event":"call_completed","call_id":"abc123","timestamp":"2021-10-27T08:58:21.66Z","duration":120,"direction":"inbound","originating_number":"+5491167950079","user":{"id":1,"name":"Jane Doe","account_id":42},"recording_url":"https://example.com/rec.mp3"}\'',
+            "health": 'curl http://localhost:8001/webhook/net2phone/health',
+            "campaigns": 'curl -H "X-API-Key: YOUR_KEY" http://localhost:8001/net2phone/campaigns'
+        },
+        "troubleshooting": {
+            "no_campaign_found": "Check user.account_id exists as campaign_id or set NET2PHONE_DEFAULT_CAMPAIGN_ID",
+            "no_operator_found": "Check user.id exists or set NET2PHONE_DEFAULT_OPERATOR_ID",
+            "recording_download_failed": "Verify recording_url is accessible from server",
+            "webhook_not_received": "Test health endpoint and check firewall/rate limiting",
+            "signature_verification_failed": "Check NET2PHONE_SECRET env variable"
         }
     }

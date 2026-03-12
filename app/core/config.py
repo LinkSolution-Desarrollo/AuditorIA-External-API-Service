@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     # OpenAI
     OPENAI_API_KEY: Optional[str] = None
 
+    # Net2Phone
+    NET2PHONE_SECRET: Optional[str] = None
+    NET2PHONE_DEFAULT_CAMPAIGN_ID: Optional[int] = None
+
     # S3 / MinIO
     S3_ACCESS_KEY: Optional[str] = None
     S3_SECRET_KEY: Optional[str] = None
