@@ -335,28 +335,68 @@ async def net2phone_webhook(
       "recording_url": "https://net2phone.com/recordings/call_12345.mp3"
     }
     """
+    settings = get_settings()
+    payload_dict = None
+    
     try:
+        logger.info("="*60)
+        logger.info("Net2Phone webhook received")
+        logger.info("Request headers: %s", dict(request.headers))
+        logger.info("Content-Type: %s", request.headers.get("content-type"))
+        
         # Get raw body for signature verification and JSON parsing
         raw_body = await request.body()
+        logger.info("Raw body length: %d bytes", len(raw_body))
         
         # Verify signature if present
         signature = request.headers.get('x-net2phone-signature')
         timestamp = request.headers.get('x-net2phone-timestamp')
         
+        logger.debug("Signature header present: %s", signature is not None)
+        logger.debug("Timestamp header present: %s", timestamp is not None)
+        
         if signature and timestamp:
             secret = settings.NET2PHONE_SECRET
+            logger.debug("NET2PHONE_SECRET configured: %s", secret is not None)
             
             if secret and not verify_webhook_signature(raw_body, signature, timestamp, secret):
+                logger.warning("Invalid webhook signature for call")
                 raise HTTPException(
                     status_code=401,
                     detail="Invalid webhook signature"
                 )
+            logger.info("Webhook signature verified successfully")
         
         # Parse payload from raw_body to avoid duplicate body reads
-        payload_dict = json.loads(raw_body.decode('utf-8'))
-        payload = Net2PhoneWebhookPayload(**payload_dict)
+        try:
+            payload_dict = json.loads(raw_body.decode('utf-8'))
+            logger.info("Parsed payload successfully")
+            logger.debug("Payload keys: %s", list(payload_dict.keys()))
+        except JSONDecodeError as e:
+            logger.error("Failed to decode JSON payload: %s", e)
+            logger.error("Raw body (first 200 chars): %s", raw_body[:200])
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid JSON payload: {str(e)}"
+            )
+        
+        # Validate payload
+        try:
+            payload = Net2PhoneWebhookPayload(**payload_dict)
+            logger.info("Payload validated: event=%s, call_id=%s", payload.event, payload.call_id)
+        except ValidationError as e:
+            logger.error("Payload validation error: %s", e)
+            logger.error("Payload data: %s", payload_dict)
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error": f"Validation error: {str(e)}",
+                    "payload": payload_dict,
+                },
+            )
         
         # Process webhook
+        logger.info("Processing webhook for call_id=%s", payload.call_id)
         result = process_net2phone_webhook(
             payload=payload,
             db=db,
@@ -376,15 +416,36 @@ async def net2phone_webhook(
         # Log any warnings
         if result['errors']:
             response.message += f" (Warnings: {'; '.join(result['errors'])})"
+            logger.warning("Webhook processing warnings for call_id=%s: %s", 
+                         payload.call_id, result['errors'])
         
+        logger.info("Webhook response: success=%s, call_id=%s, recording_downloaded=%s, task_id=%s",
+                   response.success, response.call_id, response.recording_downloaded, response.task_id)
+        logger.info("="*60)
         return response
         
     except Net2PhoneIntegrationError as e:
+        logger.error("Net2Phone integration error: %s", e)
+        logger.exception("Integration error traceback:")
         raise HTTPException(
             status_code=422,
             detail=f"Integration error: {str(e)}"
         )
+    except HTTPException:
+        raise
+    except ValidationError as e:
+        logger.error("Unexpected validation error: %s", e)
+        logger.exception("Validation error traceback:")
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": f"Validation error: {str(e)}",
+                "payload": payload_dict,
+            },
+        )
     except Exception as e:
+        logger.error("Unexpected error processing Net2Phone webhook: %s", e)
+        logger.exception("Full traceback:")
         raise HTTPException(
             status_code=500,
             detail=f"Internal error: {str(e)}"

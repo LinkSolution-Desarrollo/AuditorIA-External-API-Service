@@ -8,6 +8,7 @@ import hashlib
 import requests
 import tempfile
 import uuid
+import logging
 from datetime import datetime, timedelta
 from typing import Optional, Tuple
 from sqlalchemy.orm import Session
@@ -17,6 +18,8 @@ from app.schemas.net2phone import Net2PhoneWebhookPayload
 from app.services.s3_service import upload_fileobj_to_s3
 from app.core.config import get_settings
 from mutagen import File as MutagenFile
+
+logger = logging.getLogger("uvicorn.error")
 
 
 class Net2PhoneIntegrationError(Exception):
@@ -213,34 +216,45 @@ def process_net2phone_webhook(
         'errors': []
     }
     
+    logger.info("Processing net2phone webhook: call_id=%s, event=%s, recording_url=%s", 
+                payload.call_id, payload.event, payload.recording_url)
+    logger.debug("Webhook payload: %s", payload.dict())
+    
     try:
         # Parse call start time from timestamp
         call_start = payload.timestamp
+        logger.debug("Call start time: %s", call_start)
         
         # Calculate call end time
         call_end = None
         if payload.duration:
             call_end = call_start + timedelta(seconds=payload.duration)
+            logger.debug("Call end time: %s (duration: %s seconds)", call_end, payload.duration)
         
         # Extract campaign_id - always use default
         campaign_id = default_campaign_id
+        logger.debug("Using campaign_id: %s", campaign_id)
         
         # Extract operator_id from user.account_id
         operator_id = extract_operator_id_from_user(
             payload.user.account_id if payload.user else None
         )
+        logger.debug("Extracted operator_id: %s", operator_id)
         
         # Generate username from API key
         username = "net2phone_webhook"
         if api_key_record and hasattr(api_key_record, 'name'):
             username = f"net2phone_{api_key_record.name}"
+        logger.debug("Generated username: %s", username)
         
         # Create or update CallLog
+        logger.debug("Searching for existing CallLog with call_id=%s", payload.call_id)
         call_log = db.query(CallLog).filter(
             CallLog.call_id == payload.call_id
         ).first()
         
         if not call_log:
+            logger.info("Creating new CallLog for call_id=%s", payload.call_id)
             # Generate provisional filename
             provisional_filename = f"pending_{payload.call_id}_{uuid.uuid4().hex[:8]}.tmp"
             call_log = CallLog(
@@ -262,6 +276,7 @@ def process_net2phone_webhook(
             db.add(call_log)
             result['call_log_created'] = True
         else:
+            logger.info("Updating existing CallLog for call_id=%s", payload.call_id)
             # Update existing log
             call_log.call_end_date = call_end
             call_log.sectot = payload.duration
@@ -269,32 +284,41 @@ def process_net2phone_webhook(
                 call_log.url = payload.recording_url
         
         db.commit()
+        logger.debug("CallLog committed to database")
         
         # Process recording if available and call completed
         if payload.event == 'call_completed' and payload.recording_url:
+            logger.info("Processing recording for call_id=%s, url=%s", payload.call_id, payload.recording_url)
             try:
                 # Download recording
+                logger.debug("Downloading recording from: %s", payload.recording_url)
                 file_content, content_type = download_recording(payload.recording_url)
+                logger.info("Recording downloaded successfully, size=%d bytes, content_type=%s", len(file_content), content_type)
                 
                 # Determine file extension
                 file_ext = determine_file_extension(content_type)
+                logger.debug("Determined file extension: %s", file_ext)
                 
                 # Generate filename
                 file_uuid = str(uuid.uuid4())
                 timestamp = call_start.strftime("%Y%m%d_%H%M%S")
                 originating_clean = (payload.originating_number or "unknown").replace('+', '').replace(' ', '')
                 file_name = f"{timestamp}_{originating_clean}_{file_uuid[:8]}{file_ext}"
+                logger.debug("Generated filename: %s", file_name)
                 
                 # Upload to S3
                 object_name = f"{username}/{file_name}"
+                logger.debug("S3 object name: %s", object_name)
                 
                 # Save to temp file
                 with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp:
                     tmp.write(file_content)
                     tmp_path = tmp.name
+                logger.debug("Saved to temp file: %s", tmp_path)
                 
                 try:
                     # Upload to S3
+                    logger.debug("Starting S3 upload...")
                     settings = get_settings()
                     with open(tmp_path, "rb") as fh:
                         upload_success = upload_fileobj_to_s3(
@@ -304,17 +328,20 @@ def process_net2phone_webhook(
                             content_type=content_type
                         )
                     
+                    logger.info("S3 upload result: %s", "SUCCESS" if upload_success else "FAILED")
                     if not upload_success:
                         raise Net2PhoneIntegrationError("Failed to upload to S3")
                     
                     # Get audio duration
                     audio_duration = None
                     try:
+                        logger.debug("Extracting audio metadata...")
                         audio_info = MutagenFile(tmp_path)
                         if audio_info and hasattr(audio_info, 'info'):
                             audio_duration = getattr(audio_info.info, 'length', None)
-                    except Exception:
-                        pass
+                            logger.debug("Audio duration: %s seconds", audio_duration)
+                    except Exception as e:
+                        logger.warning("Could not extract audio duration: %s", e)
                     
                     # Create transcription task
                     task_params = {
@@ -325,6 +352,7 @@ def process_net2phone_webhook(
                         "s3_path": object_name,
                         "username": username,
                     }
+                    logger.debug("Creating task with params: %s", task_params)
                     
                     new_task = Task(
                         uuid=file_uuid,
@@ -344,6 +372,7 @@ def process_net2phone_webhook(
                     
                     db.commit()
                     db.refresh(new_task)
+                    logger.info("Created task_id=%s for call_id=%s", new_task.uuid, payload.call_id)
                     
                     result['recording_downloaded'] = True
                     result['task_created'] = True
@@ -352,16 +381,25 @@ def process_net2phone_webhook(
                     
                 finally:
                     # Clean up temp file
+                    logger.debug("Cleaning up temp file: %s", tmp_path)
                     if os.path.exists(tmp_path):
                         os.unlink(tmp_path)
                 
             except Net2PhoneDownloadError as e:
+                logger.error("Download failed for call_id=%s: %s", payload.call_id, e)
                 result['errors'].append(f"Download failed: {str(e)}")
             except Net2PhoneIntegrationError as e:
+                logger.error("Integration error for call_id=%s: %s", payload.call_id, e)
                 result['errors'].append(f"Integration error: {str(e)}")
+        else:
+            logger.debug("Skipping recording processing: event=%s, has_recording=%s", 
+                        payload.event, payload.recording_url is not None)
         
+        logger.info("Webhook processing completed for call_id=%s: recording_downloaded=%s, task_created=%s, errors=%s",
+                    payload.call_id, result['recording_downloaded'], result['task_created'], result['errors'])
         return result
         
     except Exception as e:
+        logger.exception("Unexpected error processing net2phone webhook for call_id=%s", payload.call_id)
         db.rollback()
         raise Net2PhoneIntegrationError(f"Failed to process webhook: {str(e)}") from e
