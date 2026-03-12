@@ -36,18 +36,34 @@ def verify_webhook_signature(
     secret: str
 ) -> bool:
     """
-    Verify net2phone webhook signature.
+    Verify net2phone webhook signature and timestamp.
+    
+    Validates both the HMAC signature and the timestamp to prevent replay attacks.
+    Timestamp must be within ±5 minutes of current UTC time.
     
     Args:
         raw_body: Raw request body as bytes
         signature: Value from x-net2phone-signature header
-        timestamp: Value from x-net2phone-timestamp header
+        timestamp: Value from x-net2phone-timestamp header (ISO 8601 or RFC3339)
         secret: Secret key for HMAC
         
     Returns:
-        True if signature is valid
+        True if signature is valid and timestamp is within acceptable window
     """
     try:
+        # Validate timestamp format and window
+        try:
+            webhook_time = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+        except (ValueError, AttributeError) as e:
+            return False
+        
+        # Check timestamp is within ±5 minutes of current UTC time
+        current_utc = datetime.utcnow()
+        time_difference = (current_utc - webhook_time.replace(tzinfo=None)).total_seconds()
+        
+        if abs(time_difference) > 300:
+            return False
+        
         # Compute HMAC-SHA256 over raw body using shared secret
         hmac_hash = hmac.new(
             secret.encode('utf-8') if secret else b'',
@@ -207,9 +223,7 @@ def process_net2phone_webhook(
             call_end = call_start + timedelta(seconds=payload.duration)
         
         # Extract campaign_id - always use default
-        campaign_id = extract_campaign_id_from_user(
-            default_campaign_id
-        )
+        campaign_id = default_campaign_id
         
         # Extract operator_id from user.account_id
         operator_id = extract_operator_id_from_user(

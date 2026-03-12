@@ -11,6 +11,7 @@ from app.core.database import get_db
 from app.core.limiter import limiter
 from app.middleware.auth import get_api_key
 from app.models import Campaign, GlobalApiKey, CallLog, Task
+from app.core.config import get_settings
 from datetime import datetime, timedelta
 
 router = APIRouter(
@@ -120,6 +121,9 @@ async def validate_mapping(
       "user_id": 1,
       "account_id": 42
     }
+    
+    Note: Campaign mapping always uses NET2PHONE_DEFAULT_CAMPAIGN_ID env variable,
+    not the account_id from the webhook payload.
     """
     user_id = payload.user_id
     account_id = payload.account_id
@@ -129,26 +133,41 @@ async def validate_mapping(
         "mapping": {}
     }
     
-    # Validate campaign
-    if account_id:
+    # Validate campaign - always uses NET2PHONE_DEFAULT_CAMPAIGN_ID
+    settings = get_settings()
+    default_campaign_id = settings.NET2PHONE_DEFAULT_CAMPAIGN_ID
+    
+    if default_campaign_id:
         campaign = db.query(Campaign).filter(
-            Campaign.campaign_id == account_id
+            Campaign.campaign_id == default_campaign_id
         ).first()
         
         result['mapping']['campaign'] = {
-            "extracted_id": account_id,
+            "extracted_id": default_campaign_id,
             "exists": campaign is not None,
-            "campaign_name": campaign.name if campaign else None
+            "campaign_name": campaign.name if campaign else None,
+            "method": "NET2PHONE_DEFAULT_CAMPAIGN_ID"
         }
         
         if not campaign:
             result['valid'] = False
+            result['mapping']['campaign']['error'] = f"Default campaign {default_campaign_id} not found in database"
+    else:
+        result['mapping']['campaign'] = {
+            "extracted_id": None,
+            "exists": False,
+            "campaign_name": None,
+            "method": "NET2PHONE_DEFAULT_CAMPAIGN_ID",
+            "error": "NET2PHONE_DEFAULT_CAMPAIGN_ID not configured"
+        }
+        result['valid'] = False
     
-    # Validate operator
-    if user_id:
+    # Validate operator - uses user.account_id
+    if account_id:
         result['mapping']['operator'] = {
-            "extracted_id": user_id,
-            "valid": True
+            "extracted_id": account_id,
+            "valid": True,
+            "method": "user.account_id"
         }
     
     return result

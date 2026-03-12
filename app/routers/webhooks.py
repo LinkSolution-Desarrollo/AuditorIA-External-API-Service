@@ -361,6 +361,7 @@ async def net2phone_webhook(
         result = process_net2phone_webhook(
             payload=payload,
             db=db,
+            default_campaign_id=settings.NET2PHONE_DEFAULT_CAMPAIGN_ID,
             api_key_record=api_key
         )
         
