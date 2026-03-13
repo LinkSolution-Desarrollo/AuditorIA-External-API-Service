@@ -88,21 +88,51 @@ NET2PHONE_SECRET=your-secret-key  # For HMAC signature verification
 }
 ```
 
+### call_recorded Event
+
+```json
+{
+  "timestamp": "2021-11-10T11:34:04.29Z",
+  "event": "call_recorded",
+  "user": {
+    "id": 1,
+    "name": "Jane Doe",
+    "account_id": 42
+  },
+  "id": "e36573e7-5065-4c64-b8bd-31a0ee37db43",
+  "audio_message_id": 89007,
+  "user_name": "Jane Doe",
+  "audio_message_url": "https://app.net2phone.com/api/call-record/89007",
+  "direction": "inbound",
+  "dialed_number": "201",
+  "originating_number": "202",
+  "call_source": "normal",
+  "call_id": "203a4f1e0a59e36b68cd85c508573893"
+}
+```
+
+**Important**: 
+- **call_completed** event includes `recording_url` field
+- **call_recorded** event includes `audio_message_url` and `audio_message_id` fields
+- Both events are supported for recording download
+
 ### Field Descriptions
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `timestamp` | string | Event timestamp (ISO 8601 format) |
-| `event` | string | Event type: call_completed, call_answered, etc |
+| `event` | string | Event type: call_completed, call_answered, call_recorded, etc |
 | `call_id` | string | Unique call ID |
-| `duration` | integer | Call duration in seconds |
+| `duration` | integer | Call duration in seconds (call_completed only) |
 | `direction` | string | Call direction: inbound or outbound |
 | `originating_number` | string | Originating phone number |
 | `dialed_number` | string | Dialed phone number |
 | `user.id` | integer | User ID (not used in mapping) |
 | `user.name` | string | User/Agent name |
 | `user.account_id` | integer | Account ID (maps to operator_id) |
-| `recording_url` | string | URL to download recording (if available) |
+| `recording_url` | string | URL to download recording (call_completed event only) |
+| `audio_message_id` | integer | Audio message ID (call_recorded event only) |
+| `audio_message_url` | string | Audio message URL (call_recorded event only) |
 
 ## Campaign Mapping
 
@@ -306,9 +336,9 @@ Get integration statistics.
 ```
 1. Call occurs in net2phone
    ↓
-2. call_completed webhook received
+2. Webhook received (call_completed or call_recorded)
    ↓
-3. Create/update CallLog
+3. Verify recording URL exists (recording_url or audio_message_url)
    ↓
 4. Download recording from net2phone URL
    ↓
@@ -316,18 +346,24 @@ Get integration statistics.
    ↓
 6. Create transcription Task
    ↓
-7. AuditorIA processes audio
+7. Create CallLog with call_id = Task.uuid
+   ↓
+8. AuditorIA processes audio
 ```
+
+**Important**: CallLog is created ONLY after successful recording processing. This prevents orphaned records in call_logs when no recording is available.
 
 ## Supported Events
 
-| Event | Description | Action |
-|-------|-------------|--------|
-| `call_completed` | Call ended | Downloads recording + creates Task |
-| `call_answered` | Call answered | Updates CallLog |
-| `call_ringing` | Call initiated | Creates CallLog |
-| `call_missed` | Call missed | Logs missed call |
-| `call_recorded` | Recording available | Processes recording |
+| Event | Description | Recording Field | Action |
+|-------|-------------|-----------------|--------|
+| `call_completed` | Call ended | `recording_url` | Downloads recording + creates Task |
+| `call_answered` | Call answered | N/A | Updates CallLog |
+| `call_ringing` | Call initiated | N/A | Creates CallLog |
+| `call_missed` | Call missed | N/A | Logs missed call |
+| `call_recorded` | Recording available | `audio_message_url` | Downloads recording + creates Task |
+
+**Note**: Both `call_completed` and `call_recorded` events can trigger recording download, but they use different field names for the recording URL.
 
 ## Troubleshooting
 

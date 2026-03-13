@@ -17,7 +17,7 @@ from app.models import Task, CallLog, Campaign, GlobalApiKey
 from app.schemas.net2phone import Net2PhoneWebhookPayload
 from app.services.s3_service import upload_fileobj_to_s3
 from app.core.config import get_settings
-from mutagen import File as MutagenFile
+from app.core.audio import get_audio_duration
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -238,6 +238,117 @@ def determine_file_extension(content_type: str) -> str:
     return mapping.get(content_type.lower(), '.mp3')
 
 
+def process_net2phone_recording(
+    recording_url: str,
+    call_start: datetime,
+    originating_number: Optional[str],
+    username: str,
+    db: Session,
+    api_key_record: Optional[GlobalApiKey] = None
+) -> dict:
+    """
+    Process net2phone recording: download, upload to S3, extract metadata.
+    
+    This follows the same pattern as upload.py endpoints.
+    
+    Args:
+        recording_url: URL to download recording from
+        call_start: Call start timestamp for filename generation
+        originating_number: Phone number for filename
+        username: Username for S3 path
+        db: Database session
+        api_key_record: API key record for api_key_id
+        
+    Returns:
+        Dictionary with:
+            - task_uuid: Generated UUID for the task
+            - file_name: Generated filename
+            - object_name: S3 object path
+            - audio_duration: Audio duration in seconds
+            - content_type: MIME type
+            
+    Raises:
+        Net2PhoneDownloadError: If download fails
+        Net2PhoneIntegrationError: If upload or processing fails
+    """
+    logger.debug("Processing net2phone recording: url=%s, call_start=%s", recording_url, call_start)
+    
+    try:
+        # Download recording
+        logger.debug("Downloading recording from: %s", recording_url)
+        file_content, content_type = download_recording(recording_url)
+        logger.info("Recording downloaded successfully, size=%d bytes, content_type=%s", len(file_content), content_type)
+        
+        # Determine file extension
+        file_ext = determine_file_extension(content_type)
+        logger.debug("Determined file extension: %s", file_ext)
+        
+        # Generate UUID for the task
+        task_uuid = str(uuid.uuid4())
+        logger.debug("Generated task_uuid: %s", task_uuid)
+        
+        # Generate filename (same pattern as upload.py)
+        timestamp = call_start.strftime("%Y%m%d_%H%M%S")
+        originating_clean = (originating_number or "unknown").replace('+', '').replace(' ', '')
+        file_name = f"{timestamp}_{originating_clean}_{task_uuid[:8]}{file_ext}"
+        logger.debug("Generated filename: %s", file_name)
+        
+        # Generate S3 object name
+        object_name = f"{username}/{file_name}"
+        logger.debug("S3 object name: %s", object_name)
+        
+        # Save to temp file for upload and duration extraction
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp:
+            tmp.write(file_content)
+            tmp_path = tmp.name
+        logger.debug("Saved to temp file: %s", tmp_path)
+        
+        try:
+            # Get audio duration using app.core.audio.get_audio_duration
+            logger.debug("Extracting audio duration...")
+            audio_duration = get_audio_duration(tmp_path)
+            logger.debug("Audio duration: %s seconds", audio_duration)
+            
+            # Upload to S3
+            logger.debug("Starting S3 upload...")
+            settings = get_settings()
+            with open(tmp_path, "rb") as fh:
+                upload_success = upload_fileobj_to_s3(
+                    fh,
+                    settings.S3_BUCKET,
+                    object_name,
+                    content_type=content_type
+                )
+            
+            logger.info("S3 upload result: %s", "SUCCESS" if upload_success else "FAILED")
+            if not upload_success:
+                raise Net2PhoneIntegrationError("Failed to upload to S3")
+            
+            return {
+                'task_uuid': task_uuid,
+                'file_name': file_name,
+                'object_name': object_name,
+                'audio_duration': audio_duration,
+                'content_type': content_type
+            }
+            
+        finally:
+            # Clean up temp file
+            logger.debug("Cleaning up temp file: %s", tmp_path)
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+        
+    except Net2PhoneDownloadError as e:
+        logger.error("Download failed: %s", e)
+        raise
+    except Net2PhoneIntegrationError as e:
+        logger.error("Integration error: %s", e)
+        raise
+    except Exception as e:
+        logger.exception("Unexpected error processing recording: %s", e)
+        raise Net2PhoneIntegrationError(f"Failed to process recording: {str(e)}") from e
+
+
 def process_net2phone_webhook(
     payload: Net2PhoneWebhookPayload,
     db: Session,
@@ -271,8 +382,18 @@ def process_net2phone_webhook(
         'errors': []
     }
     
-    logger.info("Processing net2phone webhook: call_id=%s, event=%s, recording_url=%s", 
-                payload.call_id, payload.event, payload.recording_url)
+    # Determine which recording URL to use
+    # - call_completed: uses recording_url
+    # - call_recorded: uses audio_message_url
+    recording_url = None
+    if payload.recording_url:
+        recording_url = payload.recording_url
+    elif hasattr(payload, 'audio_message_url') and payload.audio_message_url:
+        recording_url = payload.audio_message_url
+    
+    logger.info("Processing net2phone webhook: call_id=%s, event=%s, recording_url=%s, audio_message_url=%s", 
+                payload.call_id, payload.event, payload.recording_url, 
+                getattr(payload, 'audio_message_url', None))
     logger.debug("Webhook payload: %s", payload.dict())
     
     try:
@@ -302,153 +423,124 @@ def process_net2phone_webhook(
             username = f"net2phone_{api_key_record.name}"
         logger.debug("Generated username: %s", username)
         
-        # Create or update CallLog
-        logger.debug("Searching for existing CallLog with call_id=%s", payload.call_id)
-        call_log = db.query(CallLog).filter(
-            CallLog.call_id == payload.call_id
-        ).first()
+        # Check if recording is available BEFORE creating any records
+        # This prevents orphaned call_logs when no recording exists
+        should_process_recording = False
         
-        if not call_log:
-            logger.info("Creating new CallLog for call_id=%s", payload.call_id)
-            # Generate provisional filename
-            provisional_filename = f"pending_{payload.call_id}_{uuid.uuid4().hex[:8]}.tmp"
-            call_log = CallLog(
-                call_id=payload.call_id,
-                file_name=provisional_filename,
-                date=call_start,
-                campaign_id=campaign_id or 1,
-                operator_id=operator_id or 1,
-                direction=payload.direction,
-                call_start_date=call_start,
-                call_end_date=call_end,
-                sectot=payload.duration,
-                ani_tel=payload.originating_number,
-                url=payload.recording_url,
-                log=f"Received net2phone webhook: {payload.event}",
-                upload_by=username,
-                created_at=datetime.utcnow()
-            )
-            db.add(call_log)
-            result['call_log_created'] = True
+        if payload.event == 'call_completed' and recording_url:
+            logger.info("call_completed event with recording_url - will process recording")
+            should_process_recording = True
+        elif payload.event == 'call_recorded' and recording_url:
+            logger.info("call_recorded event with audio_message_url - will process recording")
+            should_process_recording = True
+        elif payload.event in ('call_completed', 'call_recorded'):
+            logger.info("Event %s received but no recording URL available - skipping to avoid orphaned data", payload.event)
+            logger.debug("Event details: call_id=%s, recording_url=%s, audio_message_url=%s", 
+                        payload.call_id, payload.recording_url, getattr(payload, 'audio_message_url', None))
+            return result  # Return early without creating any records
         else:
-            logger.info("Updating existing CallLog for call_id=%s", payload.call_id)
-            # Update existing log
-            call_log.call_end_date = call_end
-            call_log.sectot = payload.duration
-            if payload.recording_url:
-                call_log.url = payload.recording_url
+            logger.debug("Skipping recording processing: event=%s (not call_completed or call_recorded)", payload.event)
+            return result  # Return early for non-recording events
         
-        db.commit()
-        logger.debug("CallLog committed to database")
-        
-        # Process recording if available and call completed
-        if payload.event == 'call_completed' and payload.recording_url:
-            logger.info("Processing recording for call_id=%s, url=%s", payload.call_id, payload.recording_url)
+        # PROCESS RECORDING FIRST, THEN CREATE TASK AND CALLLOG
+        # This order ensures data integrity: no orphaned call_logs if recording fails
+        if should_process_recording:
+            logger.info("Processing recording for net2phone call_id=%s, url=%s", payload.call_id, recording_url)
             try:
-                # Download recording
-                logger.debug("Downloading recording from: %s", payload.recording_url)
-                file_content, content_type = download_recording(payload.recording_url)
-                logger.info("Recording downloaded successfully, size=%d bytes, content_type=%s", len(file_content), content_type)
+                # Use helper function to process recording (download, upload, extract metadata)
+                recording_data = process_net2phone_recording(
+                    recording_url=recording_url,
+                    call_start=call_start,
+                    originating_number=payload.originating_number,
+                    username=username,
+                    db=db,
+                    api_key_record=api_key_record
+                )
                 
-                # Determine file extension
-                file_ext = determine_file_extension(content_type)
-                logger.debug("Determined file extension: %s", file_ext)
+                task_uuid = recording_data['task_uuid']
+                logger.info("Recording processed successfully, task_uuid=%s", task_uuid)
                 
-                # Generate filename
-                file_uuid = str(uuid.uuid4())
-                timestamp = call_start.strftime("%Y%m%d_%H%M%S")
-                originating_clean = (payload.originating_number or "unknown").replace('+', '').replace(' ', '')
-                file_name = f"{timestamp}_{originating_clean}_{file_uuid[:8]}{file_ext}"
-                logger.debug("Generated filename: %s", file_name)
+                # Create task_params following the same pattern as upload.py
+                task_params = {
+                    "language": "es",
+                    "task": "transcribe",
+                    "model": "nova-3",
+                    "device": "deepgram",
+                    "device_index": 0,
+                    "threads": None,
+                    "batch_size": None,
+                    "compute_type": None,
+                    "align_model": None,
+                    "interpolate_method": None,
+                    "return_char_alignments": False,
+                    "asr_options": {},
+                    "vad_options": {},
+                    "min_speakers": None,
+                    "max_speakers": None,
+                    "s3_path": recording_data['object_name'],
+                    "username": username,
+                    "api_key_id": api_key_record.id if api_key_record else None,
+                    "source_url": recording_url,
+                    "net2phone_call_id": payload.call_id,  # Store original Net2Phone call_id
+                    "net2phone_event": payload.event,
+                    "net2phone_direction": payload.direction,
+                    "net2phone_audio_message_id": getattr(payload, 'audio_message_id', None),
+                }
+                logger.debug("Creating task with params: %s", task_params)
                 
-                # Upload to S3
-                object_name = f"{username}/{file_name}"
-                logger.debug("S3 object name: %s", object_name)
+                # Create Task
+                new_task = Task(
+                    uuid=task_uuid,
+                    file_name=recording_data['file_name'],
+                    url=recording_data['object_name'],
+                    status="pending",
+                    task_type="full_process",
+                    task_params=task_params,
+                    language="es",
+                    audio_duration=recording_data['audio_duration']
+                )
+                db.add(new_task)
+                logger.debug("Task added to database, uuid=%s", task_uuid)
                 
-                # Save to temp file
-                with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp:
-                    tmp.write(file_content)
-                    tmp_path = tmp.name
-                logger.debug("Saved to temp file: %s", tmp_path)
+                # Create CallLog AFTER Task is created (data integrity)
+                # CallLog.call_id = Task.uuid (correct relationship)
+                new_call_log = CallLog(
+                    call_id=task_uuid,  # RELACIÓN CORRECTA: CallLog.call_id = Task.uuid
+                    file_name=recording_data['file_name'],
+                    date=call_start,
+                    campaign_id=campaign_id or 1,
+                    operator_id=operator_id or 1,
+                    direction=payload.direction,
+                    call_start_date=call_start,
+                    call_end_date=call_end,
+                    sectot=payload.duration,
+                    ani_tel=payload.originating_number,
+                    url=recording_data['object_name'],
+                    log=f"Net2Phone webhook processed: call_id={payload.call_id}, event={payload.event}, Task UUID={task_uuid}",
+                    upload_by=username,
+                    created_at=datetime.utcnow()
+                )
+                db.add(new_call_log)
+                logger.debug("CallLog added to database, call_id=%s", task_uuid)
                 
-                try:
-                    # Upload to S3
-                    logger.debug("Starting S3 upload...")
-                    settings = get_settings()
-                    with open(tmp_path, "rb") as fh:
-                        upload_success = upload_fileobj_to_s3(
-                            fh,
-                            settings.S3_BUCKET,
-                            object_name,
-                            content_type=content_type
-                        )
-                    
-                    logger.info("S3 upload result: %s", "SUCCESS" if upload_success else "FAILED")
-                    if not upload_success:
-                        raise Net2PhoneIntegrationError("Failed to upload to S3")
-                    
-                    # Get audio duration
-                    audio_duration = None
-                    try:
-                        logger.debug("Extracting audio metadata...")
-                        audio_info = MutagenFile(tmp_path)
-                        if audio_info and hasattr(audio_info, 'info'):
-                            audio_duration = getattr(audio_info.info, 'length', None)
-                            logger.debug("Audio duration: %s seconds", audio_duration)
-                    except Exception as e:
-                        logger.warning("Could not extract audio duration: %s", e)
-                    
-                    # Create transcription task
-                    task_params = {
-                        "language": "es",
-                        "task": "transcribe",
-                        "model": "nova-3",
-                        "device": "deepgram",
-                        "s3_path": object_name,
-                        "username": username,
-                    }
-                    logger.debug("Creating task with params: %s", task_params)
-                    
-                    new_task = Task(
-                        uuid=file_uuid,
-                        file_name=file_name,
-                        url=object_name,
-                        status="pending",
-                        task_type="full_process",
-                        task_params=task_params,
-                        language="es",
-                        audio_duration=audio_duration,
-                    )
-                    db.add(new_task)
-                    
-                    # Update call log
-                    call_log.file_name = file_name
-                    call_log.url = object_name
-                    
-                    db.commit()
-                    db.refresh(new_task)
-                    logger.info("Created task_id=%s for call_id=%s", new_task.uuid, payload.call_id)
-                    
-                    result['recording_downloaded'] = True
-                    result['task_created'] = True
-                    result['task_id'] = new_task.uuid
-                    result['file_name'] = file_name
-                    
-                finally:
-                    # Clean up temp file
-                    logger.debug("Cleaning up temp file: %s", tmp_path)
-                    if os.path.exists(tmp_path):
-                        os.unlink(tmp_path)
+                # Commit both Task and CallLog together
+                db.commit()
+                db.refresh(new_task)
+                logger.info("Created task_uuid=%s and CallLog for net2phone call_id=%s", task_uuid, payload.call_id)
+                
+                result['recording_downloaded'] = True
+                result['task_created'] = True
+                result['call_log_created'] = True
+                result['task_id'] = task_uuid
+                result['call_log_id'] = task_uuid  # Same as task_id
+                result['file_name'] = recording_data['file_name']
                 
             except Net2PhoneDownloadError as e:
-                logger.error("Download failed for call_id=%s: %s", payload.call_id, e)
+                logger.error("Download failed for net2phone call_id=%s: %s", payload.call_id, e)
                 result['errors'].append(f"Download failed: {str(e)}")
             except Net2PhoneIntegrationError as e:
-                logger.error("Integration error for call_id=%s: %s", payload.call_id, e)
+                logger.error("Integration error for net2phone call_id=%s: %s", payload.call_id, e)
                 result['errors'].append(f"Integration error: {str(e)}")
-        else:
-            logger.debug("Skipping recording processing: event=%s, has_recording=%s", 
-                        payload.event, payload.recording_url is not None)
         
         logger.info("Webhook processing completed for call_id=%s: recording_downloaded=%s, task_created=%s, errors=%s",
                     payload.call_id, result['recording_downloaded'], result['task_created'], result['errors'])
