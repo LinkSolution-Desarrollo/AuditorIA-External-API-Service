@@ -37,7 +37,9 @@ class Net2PhoneWebhookPayload(BaseModel):
     user_name: Optional[str] = Field(None, description="User name (deprecated, use user.name)")
     
     # Recording (if available)
-    recording_url: Optional[str] = Field(None, description="URL to download recording")
+    recording_url: Optional[str] = Field(None, description="URL to download recording (from call_completed)")
+    audio_message_id: Optional[int] = Field(None, description="Audio message ID (from call_recorded)")
+    audio_message_url: Optional[str] = Field(None, description="Audio message URL (from call_recorded)")
     voice_mail: Optional[bool] = Field(None, description="True if voicemail recorded")
     
     # Click to Call (if applicable)
@@ -77,7 +79,8 @@ class Net2PhoneWebhookResponse(BaseModel):
     """Response schema for net2phone webhook."""
     success: bool
     message: str
-    call_id: Optional[str] = None
-    task_id: Optional[str] = None
+    call_id: Optional[str] = None  # Net2Phone original call_id
+    task_id: Optional[str] = None  # Task.uuid (task_uuid)
+    call_log_id: Optional[str] = None  # CallLog.call_id (= Task.uuid)
     recording_downloaded: bool = False
     event_type: Optional[str] = None

@@ -384,6 +384,7 @@ async def net2phone_webhook(
         try:
             payload = Net2PhoneWebhookPayload(**payload_dict)
             logger.info("Payload validated: event=%s, call_id=%s", payload.event, payload.call_id)
+            logger.info("Full payload (for debugging): %s", payload_dict)
         except ValidationError as e:
             logger.error("Payload validation error: %s", e)
             logger.error("Payload data: %s", payload_dict)
@@ -407,8 +408,9 @@ async def net2phone_webhook(
         response = Net2PhoneWebhookResponse(
             success=True,
             message=f"Webhook processed successfully: {payload.event}",
-            call_id=result['call_id'],
-            task_id=result.get('task_id'),
+            call_id=result['call_id'],  # Net2Phone original call_id
+            task_id=result.get('task_id'),  # Task.uuid
+            call_log_id=result.get('call_log_id'),  # CallLog.call_id (= Task.uuid)
             recording_downloaded=result['recording_downloaded'],
             event_type=payload.event
         )
@@ -419,8 +421,8 @@ async def net2phone_webhook(
             logger.warning("Webhook processing warnings for call_id=%s: %s", 
                          payload.call_id, result['errors'])
         
-        logger.info("Webhook response: success=%s, call_id=%s, recording_downloaded=%s, task_id=%s",
-                   response.success, response.call_id, response.recording_downloaded, response.task_id)
+        logger.info("Webhook response: success=%s, net2phone_call_id=%s, task_id=%s, call_log_id=%s, recording_downloaded=%s",
+                   response.success, response.call_id, response.task_id, response.call_log_id, response.recording_downloaded)
         logger.info("="*60)
         return response
         
