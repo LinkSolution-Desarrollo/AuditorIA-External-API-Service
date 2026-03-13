@@ -188,6 +188,9 @@ def download_recording(recording_url: str) -> Tuple[bytes, str]:
     """
     Download recording from net2phone URL.
     
+    For Net2Phone URLs ending in ':generate-audio-download-link',
+    first requests a temporary download URL, then downloads the audio.
+    
     Args:
         recording_url: URL to download recording from
         
@@ -197,20 +200,50 @@ def download_recording(recording_url: str) -> Tuple[bytes, str]:
     Raises:
         Net2PhoneDownloadError: If download fails
     """
+    settings = get_settings()
+    api_headers = {}
+    
+    if settings.NET2PHONE_API_KEY:
+        api_headers['X-API-Key'] = settings.NET2PHONE_API_KEY
+        logger.debug("Using NET2PHONE_API_KEY for recording download")
+    
     try:
+        download_url = recording_url
+        
+        if ':generate-audio-download-link' in recording_url:
+            logger.debug("Net2Phone generate-link endpoint detected, requesting temporary URL")
+            json_response = requests.get(
+                recording_url,
+                timeout=30,
+                headers={**api_headers, 'Accept': 'application/json'}
+            )
+            json_response.raise_for_status()
+            
+            data = json_response.json()
+            download_url = data.get('url')
+            
+            if not download_url:
+                raise Net2PhoneDownloadError("No 'url' field in Net2Phone response")
+            
+            logger.debug("Got temporary download URL: %s", download_url)
+        
+        logger.debug("Downloading recording from: %s", download_url)
         response = requests.get(
-            recording_url,
+            download_url,
             timeout=30,
             headers={'Accept': 'audio/*'}
         )
         response.raise_for_status()
         
         content_type = response.headers.get('Content-Type', 'audio/mpeg')
+        logger.debug("Download completed, content_type=%s, size=%d bytes", content_type, len(response.content))
         
         return response.content, content_type
         
     except requests.RequestException as e:
         raise Net2PhoneDownloadError(f"Failed to download recording: {str(e)}") from e
+    except (KeyError, ValueError) as e:
+        raise Net2PhoneDownloadError(f"Failed to parse Net2Phone response: {str(e)}") from e
 
 
 def determine_file_extension(content_type: str) -> str:

@@ -37,7 +37,18 @@ This module enables AuditorIA to receive webhooks from net2phone cloud PBX and a
   - `x-net2phone-signature`: HMAC-SHA256 signature
   - `x-net2phone-timestamp`: Timestamp of the request (ISO 8601 format)
 
-### 2. AuditorIA Configuration
+### 2. Net2Phone API Key Setup
+
+To download recordings from Net2Phone, you need an API key:
+
+1. Go to **https://app.net2phone.com** or **https://developer.net2phone.com**
+2. Navigate to **Settings → API** or **Developer Portal**
+3. Generate an API Key for your application
+4. Copy the API key - you'll use it in the NET2PHONE_API_KEY environment variable
+
+**Note**: The API key is sent in the `X-API-Key` header when downloading recordings.
+
+### 3. AuditorIA Configuration
 
 #### Environment Variables
 
@@ -50,10 +61,13 @@ S3_ACCESS_KEY=your-access-key
 S3_SECRET_KEY=your-secret-key
 S3_BUCKET=audios
 
+# Net2Phone API configuration
+NET2PHONE_API_KEY=your-net2phone-api-key  # REQUIRED: API key for downloading recordings
+NET2PHONE_SECRET=your-webhook-secret  # For HMAC webhook signature verification
+
 # Optional: Default values for webhooks
 NET2PHONE_DEFAULT_CAMPAIGN_ID=1  # Default campaign if user.account_id not found
 NET2PHONE_DEFAULT_OPERATOR_ID=1  # Default operator if user.id not detected
-NET2PHONE_SECRET=your-secret-key  # For HMAC signature verification
 ```
 
 #### Create API Key
@@ -376,10 +390,33 @@ Get integration statistics.
 
 ### Recording download failed
 
-1. Verify `recording_url` is accessible
-2. Check AuditorIA server can reach net2phone URLs
-3. Verify S3/MinIO credentials in `.env`
-4. Check storage space available
+1. **401 Unauthorized**: Verify `NET2PHONE_API_KEY` is set correctly in `.env`
+2. Verify `recording_url` is accessible
+3. Check AuditorIA server can reach net2phone URLs
+4. Verify S3/MinIO credentials in `.env`
+5. Check storage space available
+
+### How Recording Download Works
+
+Net2Phone uses a two-step process for downloading call recordings:
+
+1. **Generate temporary URL**: The webhook provides a URL ending in `:generate-audio-download-link`
+   - This endpoint requires `X-API-Key` authentication
+   - Returns a JSON with a temporary download URL and expiration time
+   
+2. **Download audio**: The temporary URL is used to download the actual audio file
+   - This URL expires after a certain time
+   - No authentication required for the temporary URL
+
+Example response from generate endpoint:
+```json
+{
+  "url": "https://mediastorage.n2p.io/unitevmail/1/1/1/a/vmmsg_us100000_10000000_g711.wav?token=abc123",
+  "expires_at_time": "1970-01-01T00:00:00.000Z"
+}
+```
+
+The `download_recording()` function handles this process automatically.
 
 ### Signature verification failed
 
