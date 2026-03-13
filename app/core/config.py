@@ -17,6 +17,7 @@ class Settings(BaseSettings):
 
     # Net2Phone
     NET2PHONE_SECRET: Optional[str] = None
+    NET2PHONE_API_KEY: Optional[str] = None
     NET2PHONE_DEFAULT_CAMPAIGN_ID: Optional[int] = None
 
     # S3 / MinIO
